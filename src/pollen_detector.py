@@ -191,14 +191,8 @@ class PollenDetector:
 
             outputs = self.model(cur_img)
             pred_seg = outputs[('segMask', 0)]
-
             pred_dist_transform = outputs[('output', 0)]
-
             softmax = pred_seg
-
-            # GT seg mask
-            curmask_org_size = cur_mask_org_size.squeeze().cpu().detach().numpy()
-            curmask_org_size_binary = curmask_org_size > 0
 
             # prediction:
             # create a list of (800x800) prediction distance transforms crops and softmax crops
@@ -338,7 +332,7 @@ class PollenDetector:
                 metadata["crop_image_coordinates"] = current_example[1][0]
                 metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
                     right_bb) + "," + str(bottom_bb) + "))"
-                metadata["confidence"] = str(confidence)
+                metadata["confidence"] = confidence
 
                 k = 1
                 img_path_2 = os.path.join(img_path, current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
@@ -439,13 +433,3 @@ class PollenDet4Eval(Dataset):
         label_org_size = label_org_size.squeeze(0)
 
         return image, label_org_size, current_example
-
-
-if __name__ == '__main__':
-    pollen_detector = PollenDetector("model",
-                                     "/Users/sandeep/Repositories/PALYIM/open_world_pollen_detection"
-                                     "/03_NDPI_Slide_Annotation/Output/C3/C3_tiles", "detections")
-    pollen_detector.generate_dbinfo()
-    pollen_detector.initialize_data()
-    pollen_detector.initialize_model()
-    pollen_detector.process_crop_images()
