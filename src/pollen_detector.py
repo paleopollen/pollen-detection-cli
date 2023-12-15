@@ -20,8 +20,8 @@ print(torch.__version__)
 
 
 class PollenDetector:
-    def __init__(self, model_dir_path, crops_dir_path, detections_dir_path):
-        self.model_dir_path = model_dir_path
+    def __init__(self, model_file_path, crops_dir_path, detections_dir_path):
+        self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
         self.detections_dir_path = detections_dir_path
         self.model = None
@@ -42,8 +42,7 @@ class PollenDetector:
         self.model = PollenDet_SegDistTransform(34, scaleList=[0], pretrained=False)
         self.model.encoder.encoder.conv1 = nn.Conv2d(27, 64, (7, 7), (2, 2), (3, 3),
                                                      bias=False)  # change dimensions of the first layer in the encoder
-        self.model.load_state_dict(torch.load(path.join(self.model_dir_path, 'bestValModel_encoder.paramOnly'),
-                                              map_location=torch.device('cpu')))
+        self.model.load_state_dict(torch.load(self.model_file_path, map_location=torch.device('cpu')))
         self.model.to(self.device)
         self.model.eval()
         self.model.training = False

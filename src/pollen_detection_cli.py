@@ -13,8 +13,8 @@ class PollenDetectionCLI:
         # Add arguments
 
         # Model directory path
-        self.parser.add_argument("--model-dir", "-m", type=str, dest="model_dir_path", nargs='?', default=None,
-                                 required=True, help="Full path of the directory containing the model files.")
+        self.parser.add_argument("--model-path", "-m", type=str, dest="model_file_path", nargs='?', default=None,
+                                 required=True, help="Full path of the trained model.")
         # Crop images directory path
         self.parser.add_argument("--crops-dir", "-c", type=str, dest="crops_dir_path", nargs='?', default=None,
                                  required=True, help="Full path of the directory containing the cropped image files.")
@@ -43,13 +43,13 @@ class PollenDetectionCLI:
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
+
     logger.info("Starting Pollen Detection CLI")
     cli = PollenDetectionCLI()
     cli.parse_args()
     cli.print_args()
 
-    pollen_detector = PollenDetector(cli.args.model_dir_path, cli.args.crops_dir_path, cli.args.detections_dir_path)
+    pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path, cli.args.detections_dir_path)
     pollen_detector.generate_dbinfo()
     pollen_detector.initialize_data()
     pollen_detector.initialize_model()
