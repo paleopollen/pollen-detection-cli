@@ -4,6 +4,7 @@ import sys
 import warnings  # ignore warnings
 import json
 
+from datetime import datetime, timezone
 from scipy.ndimage import gaussian_filter
 from skimage import feature
 from skimage import measure
@@ -333,6 +334,8 @@ class PollenDetector:
                 metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
                     right_bb) + "," + str(bottom_bb) + "))"
                 metadata["confidence"] = confidence
+                metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                                                     :-3] + 'Z'
 
                 k = 1
                 img_path_2 = os.path.join(img_path, current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
