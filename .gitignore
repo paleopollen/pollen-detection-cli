@@ -162,5 +162,5 @@ cython_debug/
 src/model/*
 
 # Detections
-src/detections/*
+src/detections*
 
