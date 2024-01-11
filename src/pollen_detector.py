@@ -48,12 +48,7 @@ class PollenDetector:
         self.model.training = False
 
     def initialize_data(self):
-        path_to_mask = (
-            '/Users/sandeep/Repositories/PALYIM/open_world_pollen_detection/03_NDPI_Slide_Annotation/Output/C3'
-            '/C3_masks')
-        set_name = 'test'  # 'test'
-        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, path_to_mask=path_to_mask,
-                                           dbinfo=self.dbinfo, size=self.tensor_size, set_name=set_name)
+        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo, size=self.tensor_size)
 
         self.data_loader = DataLoader(self.det_datasets, batch_size=1, shuffle=False, num_workers=0)
 
@@ -142,7 +137,6 @@ class PollenDetector:
         bbox_list_threshold_applied = []
         bbox_list_new = []
         bbox_list_new_txt = []
-        # detMask_info = detMask_info
 
         # Stage 1: sort boxes, filter out boxes with low confidence
         boxes_sorted = sorted(boxes, reverse=True, key=lambda x: x[1])
@@ -164,10 +158,8 @@ class PollenDetector:
             for box in bbox_list_threshold_applied:
                 if current_box[0] == box[0]:
                     iou = PollenDetector.iou(current_box[2:], box[2:])
-                    # print(iou)
                     if iou > iou_threshold:
                         bbox_list_threshold_applied.remove(box)
-                        # detMask_info.remove()
 
         return bbox_list_new, bbox_list_new_txt
 
@@ -181,13 +173,13 @@ class PollenDetector:
         for sample in self.data_loader:
             iter_count += 1
 
-            print("Processing crop image: " + str(iter_count))
+            print("Started processing crop image: " + str(iter_count))
 
             if iter_count % 25 == 0:
                 print('{}/{}'.format(iter_count, len(self.det_datasets)))
 
-            cur_img, cur_mask_org_size, current_example = sample
-            cur_img, cur_mask_org_size = cur_img.to(self.device), cur_mask_org_size.to(self.device)
+            cur_img, current_example = sample
+            cur_img = cur_img.to(self.device)
 
             outputs = self.model(cur_img)
             pred_seg = outputs[('segMask', 0)]
@@ -209,7 +201,7 @@ class PollenDetector:
                 softmax_crops.append(tmp_img)
 
             # create full-sized pred distance transform
-            mask_org_size = cur_mask_org_size.squeeze().cpu().detach().numpy()
+            mask_org_size = cur_img.squeeze().cpu().detach().numpy()[0, :, :]
 
             tmp_pred_dist_transform_1 = np.zeros_like(mask_org_size).astype(np.float32)
 
@@ -298,9 +290,6 @@ class PollenDetector:
             # create detection mask and center mask using the information on each detection in [NMS_bb]
             det_mask = voting4center * 0
 
-            # TODO: Pollen on 0x_16384y - Store confidence and detection coordinates within the 1024 by 1024 crop as
-            #  text/JSON
-
             for i in range(len(nms_bb)):
                 confidence = float(nms_bb[i][1])
                 left_bb = int(nms_bb[i][2])
@@ -323,10 +312,7 @@ class PollenDetector:
                     img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
                     slices.append(img_slice)
 
-                # TODO: Please make sure to save pollen sub-crops and masks, and a text file of sample name,
-                #  crop coordinates, pollen coordinates, and confidence scores! save slices of cropped image
                 img_path = detections_dir
-
                 metadata: dict = dict()
                 metadata["sample_filename"] = current_example[0][0]
                 metadata["crop_image_coordinates"] = current_example[1][0]
@@ -337,9 +323,10 @@ class PollenDetector:
                                                      :-3] + 'Z'
 
                 k = 1
-                img_path_2 = os.path.join(img_path, current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
+                img_path_2 = os.path.join(str(img_path),
+                                          current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
                 while os.path.exists(img_path_2):
-                    img_path_2 = os.path.join(img_path,
+                    img_path_2 = os.path.join(str(img_path),
                                               current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
                     k += 1
 
@@ -366,7 +353,6 @@ class PollenDetector:
                 crop_mask.save(mask_filename)
 
                 # save metadata
-
                 metadata_path = img_path_2
 
                 k = 1
@@ -378,17 +364,15 @@ class PollenDetector:
                 with open(metadata_filename, "w") as metadata_json_file:
                     json.dump(metadata, metadata_json_file, indent=2)
 
+            print("Completed processing crop image: " + str(iter_count))
+
 
 class PollenDet4Eval(Dataset):
-    def __init__(self, path_to_image, path_to_mask, dbinfo, size, set_name='test'):
+    def __init__(self, path_to_image, dbinfo, size):
 
         self.path_to_image = path_to_image
-        self.path_to_mask = path_to_mask
         self.transform = transform
         self.dbinfo = dbinfo
-        if set_name == 'val':
-            set_name = 'test'
-        self.set_name = set_name
         self.size = size
         self.resizeFactor = size[0] / 1000
 
@@ -406,9 +390,7 @@ class PollenDet4Eval(Dataset):
 
     def __getitem__(self, idx):
         current_example = self.sampleList[idx]
-        current_image_path = os.path.join(self.path_to_image, current_example[0], current_example[1])
-        current_dist_transform_path = os.path.join(self.path_to_mask, "PAL1999_C3_sample22_slide1_5", "0x_1024y")
-        mask = None
+        current_image_path = os.path.join(str(self.path_to_image), current_example[0], current_example[1])
 
         imagestack_array = []
         for file in sorted(os.listdir(current_image_path)):
@@ -421,17 +403,5 @@ class PollenDet4Eval(Dataset):
             npad = ((0, 0), (0, 0), (0, pad_val))
             image = np.pad(image, pad_width=npad, mode='constant', constant_values=0)
 
-        for file in os.listdir(current_dist_transform_path):
-            if file.endswith('.png'):
-                mask = Image.open(os.path.join(current_dist_transform_path, file))
-                mask = np.array(mask)
-                mask = np.expand_dims(mask, axis=2)
-
-        label_org_size = np.copy(mask)
-        label_org_size = torch.from_numpy(label_org_size).unsqueeze(0).unsqueeze(0).squeeze(4)
-
         image = self.TF2tensor(image)
-
-        label_org_size = label_org_size.squeeze(0)
-
-        return image, label_org_size, current_example
+        return image, current_example
