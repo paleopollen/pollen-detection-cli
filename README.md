@@ -27,19 +27,17 @@ python pollen_detection_cli.py
 ## Usage
 
 ```shell
-usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir [DETECTIONS_DIR_PATH]] [--verbose]
+sage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--verbose]
 
 Process PNG image stacks and detect pollen grains.
 
 optional arguments:
   -h, --help            show this help message and exit
   --model-path [MODEL_FILE_PATH], -m [MODEL_FILE_PATH]
-                        Full path of the directory containing the model files.
+                        Full path of the trained model.
   --crops-dir [CROPS_DIR_PATH], -c [CROPS_DIR_PATH]
                         Full path of the directory containing the cropped image files.
-  --detections-dir [DETECTIONS_DIR_PATH], -d [DETECTIONS_DIR_PATH]
-                        Full path of the directory to store the detection results.
+  --detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX], -d [DETECTIONS_DIR_PATH_PREFIX]
+                        Full path prefix of the directory to store the detection results.
   --verbose, -v         Display more details.
-
 ```
-
