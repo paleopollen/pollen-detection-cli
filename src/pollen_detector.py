@@ -32,7 +32,7 @@ class PollenDetector:
         now = datetime.now()
         # Format as a string
         datetime_postfix = now.strftime("%Y-%m-%d_%H-%M-%S")
-        self.detections_dir_path_prefix = detections_dir_path_prefix + "_" + datetime_postfix
+        self.detections_dir_path = detections_dir_path_prefix + "_" + datetime_postfix
 
         self.model = None
         self.dbinfo = None
@@ -175,9 +175,8 @@ class PollenDetector:
 
     def process_crop_images(self):
 
-        detections_dir = os.path.join(self.detections_dir_path_prefix)
-        if not os.path.exists(detections_dir):
-            os.makedirs(detections_dir)
+        if not os.path.exists(self.detections_dir_path):
+            os.makedirs(self.detections_dir_path)
 
         iter_count, sample_count = 0, 0
         for sample in self.data_loader:
@@ -219,7 +218,6 @@ class PollenDetector:
             pred_dist_transform = np.maximum.reduce(
                 [tmp_pred_dist_transform_1])
             pred_dist_transform = gaussian_filter(pred_dist_transform, sigma=10)  # gaussian blur to get rid of shadow
-            pred_distance_transform = np.copy(pred_dist_transform)
 
             tmp_softmax_1 = np.zeros_like(mask_org_size).astype(np.float32)
 
@@ -228,7 +226,7 @@ class PollenDetector:
             softmax = np.nanmean(np.array([tmp_softmax_1]), axis=0)
 
             # find peaks, zero-out background noise
-            voting4center = np.copy(pred_distance_transform)
+            voting4center = np.copy(pred_dist_transform)
             voting4center[voting4center < 0.001] = 0
             coord_peaks = feature.peak_local_max(voting4center, min_distance=25,
                                                  exclude_border=False)  # originally min_distance =5, changed to 25
@@ -321,7 +319,7 @@ class PollenDetector:
                     img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
                     slices.append(img_slice)
 
-                img_path = detections_dir
+                img_path = self.detections_dir_path
                 metadata: dict = dict()
                 metadata["sample_filename"] = current_example[0][0]
                 metadata["crop_image_coordinates"] = current_example[1][0]
