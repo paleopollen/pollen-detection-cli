@@ -41,3 +41,17 @@ optional arguments:
                         Full path prefix of the directory to store the detection results.
   --verbose, -v         Display more details.
 ```
+
+## Docker Installation Instructions
+
+### Build Docker Image
+
+```shell
+docker build -t pollen-detection .
+```
+
+### Run Command Line Interface
+
+```shell
+docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
+```
