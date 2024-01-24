@@ -3,6 +3,7 @@ from __future__ import print_function, division
 import sys
 import warnings  # ignore warnings
 import json
+import logging
 
 from datetime import datetime, timezone
 from scipy.ndimage import gaussian_filter
@@ -14,16 +15,25 @@ from utils.dataset import *
 from utils.network_arch import *
 from utils.trainval_detSegDistTransform import *
 
+logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger("pollen_detector.py")
+
 warnings.filterwarnings("ignore")
-print(sys.version)
-print(torch.__version__)
+logger.info(sys.version)
+logger.info(torch.__version__)
 
 
 class PollenDetector:
-    def __init__(self, model_file_path, crops_dir_path, detections_dir_path):
+    def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
-        self.detections_dir_path = detections_dir_path
+
+        # Get the current date and time
+        now = datetime.now()
+        # Format as a string
+        datetime_postfix = now.strftime("%Y-%m-%d_%H-%M-%S")
+        self.detections_dir_path = detections_dir_path_prefix + "_" + datetime_postfix
+
         self.model = None
         self.dbinfo = None
         self.det_datasets = None
@@ -37,7 +47,7 @@ class PollenDetector:
         self.device = 'cpu'
         if torch.cuda.is_available():
             self.device = 'cuda:0'
-        print(self.device)
+        logger.info(self.device)
 
         self.model = PollenDet_SegDistTransform(34, scaleList=[0], pretrained=False)
         self.model.encoder.encoder.conv1 = nn.Conv2d(27, 64, (7, 7), (2, 2), (3, 3),
@@ -165,20 +175,18 @@ class PollenDetector:
 
     def process_crop_images(self):
 
-        detections_dir = os.path.join(self.detections_dir_path)
-        if not os.path.exists(detections_dir):
-            os.makedirs(detections_dir)
+        if not os.path.exists(self.detections_dir_path):
+            os.makedirs(self.detections_dir_path)
 
         iter_count, sample_count = 0, 0
         for sample in self.data_loader:
             iter_count += 1
 
-            print("Started processing crop image: " + str(iter_count))
-
             if iter_count % 25 == 0:
-                print('{}/{}'.format(iter_count, len(self.det_datasets)))
+                logger.info('{}/{}'.format(iter_count, len(self.det_datasets)))
 
             cur_img, current_example = sample
+            logger.info("Started processing crop image: " + str(current_example))
             cur_img = cur_img.to(self.device)
 
             outputs = self.model(cur_img)
@@ -210,7 +218,6 @@ class PollenDetector:
             pred_dist_transform = np.maximum.reduce(
                 [tmp_pred_dist_transform_1])
             pred_dist_transform = gaussian_filter(pred_dist_transform, sigma=10)  # gaussian blur to get rid of shadow
-            pred_distance_transform = np.copy(pred_dist_transform)
 
             tmp_softmax_1 = np.zeros_like(mask_org_size).astype(np.float32)
 
@@ -219,7 +226,7 @@ class PollenDetector:
             softmax = np.nanmean(np.array([tmp_softmax_1]), axis=0)
 
             # find peaks, zero-out background noise
-            voting4center = np.copy(pred_distance_transform)
+            voting4center = np.copy(pred_dist_transform)
             voting4center[voting4center < 0.001] = 0
             coord_peaks = feature.peak_local_max(voting4center, min_distance=25,
                                                  exclude_border=False)  # originally min_distance =5, changed to 25
@@ -312,7 +319,7 @@ class PollenDetector:
                     img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
                     slices.append(img_slice)
 
-                img_path = detections_dir
+                img_path = self.detections_dir_path
                 metadata: dict = dict()
                 metadata["sample_filename"] = current_example[0][0]
                 metadata["crop_image_coordinates"] = current_example[1][0]
@@ -364,7 +371,7 @@ class PollenDetector:
                 with open(metadata_filename, "w") as metadata_json_file:
                     json.dump(metadata, metadata_json_file, indent=2)
 
-            print("Completed processing crop image: " + str(iter_count))
+            logger.info("Completed processing crop image: " + str(current_example))
 
 
 class PollenDet4Eval(Dataset):

@@ -21,25 +21,37 @@ pip install -r requirements.txt
 
 ```shell
 cd src
-python pollen_detection_cli.py
+python pollen_detection_cli.py -m <model full path> -c <tile crops directory full path> -d <output detections directory>
 ```
 
 ## Usage
 
 ```shell
-usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir [DETECTIONS_DIR_PATH]] [--verbose]
+sage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--verbose]
 
 Process PNG image stacks and detect pollen grains.
 
 optional arguments:
   -h, --help            show this help message and exit
   --model-path [MODEL_FILE_PATH], -m [MODEL_FILE_PATH]
-                        Full path of the directory containing the model files.
+                        Full path of the trained model.
   --crops-dir [CROPS_DIR_PATH], -c [CROPS_DIR_PATH]
                         Full path of the directory containing the cropped image files.
-  --detections-dir [DETECTIONS_DIR_PATH], -d [DETECTIONS_DIR_PATH]
-                        Full path of the directory to store the detection results.
+  --detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX], -d [DETECTIONS_DIR_PATH_PREFIX]
+                        Full path prefix of the directory to store the detection results.
   --verbose, -v         Display more details.
-
 ```
 
+## Docker Installation Instructions
+
+### Build Docker Image
+
+```shell
+docker build -t pollen-detection .
+```
+
+### Run Command Line Interface
+
+```shell
+docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
+```
