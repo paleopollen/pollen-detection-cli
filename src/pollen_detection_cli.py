@@ -20,9 +20,10 @@ class PollenDetectionCLI:
                                  required=True, help="Full path of the directory containing the cropped image files.")
 
         # Detections output directory path
-        self.parser.add_argument("--detections-dir", "-d", type=str, dest="detections_dir_path", nargs="?",
+        self.parser.add_argument("--detections-dir-prefix", "-d", type=str, dest="detections_dir_path_prefix",
+                                 nargs="?",
                                  default="detections", required=False,
-                                 help="Full path of the directory to store the detection results.")
+                                 help="Full path prefix of the directory to store the detection results.")
 
         # Verbose
         self.parser.add_argument("--verbose", "-v", action="store_true", dest="verbose", default=False,
@@ -42,14 +43,15 @@ class PollenDetectionCLI:
 
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("pollen_detection_cli.py")
 
     logger.info("Starting Pollen Detection CLI")
     cli = PollenDetectionCLI()
     cli.parse_args()
     cli.print_args()
 
-    pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path, cli.args.detections_dir_path)
+    pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path,
+                                     cli.args.detections_dir_path_prefix)
     pollen_detector.generate_dbinfo()
     pollen_detector.initialize_data()
     pollen_detector.initialize_model()
