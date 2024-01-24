@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 ```shell
 cd src
-python pollen_detection_cli.py
+python pollen_detection_cli.py -m <model full path> -c <tile crops directory full path> -d <output detections directory>
 ```
 
 ## Usage
