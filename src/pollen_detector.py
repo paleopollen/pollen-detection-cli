@@ -19,8 +19,8 @@ logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s
 logger = logging.getLogger("pollen_detector.py")
 
 warnings.filterwarnings("ignore")
-print(sys.version)
-print(torch.__version__)
+logger.info(sys.version)
+logger.info(torch.__version__)
 
 
 class PollenDetector:
