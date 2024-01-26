@@ -43,6 +43,7 @@ class PollenDetector:
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
 
     def initialize_model(self):
+        logger.info("Initializing model")
         # cpu or cuda
         self.device = 'cpu'
         if torch.cuda.is_available():
@@ -58,6 +59,7 @@ class PollenDetector:
         self.model.training = False
 
     def initialize_data(self):
+        logger.info("Initializing data")
         self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo, size=self.tensor_size)
 
         self.data_loader = DataLoader(self.det_datasets, batch_size=1, shuffle=False, num_workers=0)
@@ -67,6 +69,7 @@ class PollenDetector:
         Function to generate the alphabetically sorted dbinfo tuple list
         :return: None
         """
+        logger.info("Generating dbinfo")
         dir_list = []
         with os.scandir(self.crops_dir_path) as crops_dir:
             main_folders = sorted((entry.name for entry in crops_dir if entry.is_dir()))
@@ -174,6 +177,7 @@ class PollenDetector:
         return bbox_list_new, bbox_list_new_txt
 
     def process_crop_images(self):
+        logger.info("Processing crop images")
 
         if not os.path.exists(self.detections_dir_path):
             os.makedirs(self.detections_dir_path)
@@ -402,8 +406,11 @@ class PollenDet4Eval(Dataset):
         imagestack_array = []
         for file in sorted(os.listdir(current_image_path)):
             if file.endswith('.png'):
-                slice_path = Image.open(os.path.join(current_image_path, file))
-                imagestack_array.append(np.asarray(slice_path).astype(np.float32) / 255)
+                try:
+                    slice_path = Image.open(os.path.join(current_image_path, file))
+                    imagestack_array.append(np.asarray(slice_path).astype(np.float32) / 255)
+                except IOError:
+                    logger.error("Error reading image file: " + str(file) + " in " + str(current_image_path))
         image = np.block(imagestack_array)
         if image.shape[2] < 27:
             pad_val = 27 - image.shape[2]
