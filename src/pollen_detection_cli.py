@@ -1,7 +1,9 @@
 import argparse
 import logging
+import torch
 
 from pollen_detector import PollenDetector
+from torch import multiprocessing as mp
 
 
 class PollenDetectionCLI:
@@ -24,6 +26,18 @@ class PollenDetectionCLI:
                                  nargs="?",
                                  default="detections", required=False,
                                  help="Full path prefix of the directory to store the detection results.")
+
+        # # Run in parallel
+        # self.parser.add_argument("--parallel", "-p", action="store_true", dest="parallel", default=False,
+        #                          help="Run the detection in parallel.")
+
+        # Number of processes
+        self.parser.add_argument("--num-processes", "-n", type=int, dest="num_processes", nargs="?", default=8,
+                                 help="Number of processes to use for parallel processing.")
+
+        # Batch size
+        self.parser.add_argument("--batch-size", "-b", type=int, dest="batch_size", nargs="?", default=8,
+                                 help="Batch size for parallel processing.")
 
         # Verbose
         self.parser.add_argument("--verbose", "-v", action="store_true", dest="verbose", default=False,
@@ -51,7 +65,26 @@ if __name__ == '__main__':
     cli.print_args()
 
     pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path,
-                                     cli.args.detections_dir_path_prefix)
+                                     cli.args.detections_dir_path_prefix, cli.args.num_processes, cli.args.batch_size)
+
+    # if cli.args.parallel:
+    #     logger.info("Running in parallel mode")
+    #     manager = mp.Manager()
+    #     return_dict = manager.dict()
+    #
+    #     worker_loaders = torch.utils.data.random_split(dataset, [len(dataset) // num_workers] * num_workers)
+    #
+    #     processes = []
+    #     for worker_id in range(cli.args.num_workers):
+    #         p = mp.Process(target=inference_worker, args=(
+    #             model, DataLoader(worker_loaders[worker_id], batch_size=10, worker_init_fn=worker_init_fn(worker_id)),
+    #             worker_id, return_dict))
+    #         processes.append(p)
+    #         p.start()
+    #
+    #     for p in processes:
+    #         p.join()
+    # else:
     pollen_detector.generate_dbinfo()
     pollen_detector.initialize_data()
     pollen_detector.initialize_model()
