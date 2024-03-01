@@ -51,6 +51,7 @@ class PollenDetector:
         self.conf_thresh = 0.013481323
         self.device = "cpu"
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
+        logger.info("Available CPU Count: " + str(mp.cpu_count()))
 
     def initialize_model(self):
         logger.info("Initializing model")
