@@ -191,10 +191,14 @@ class PollenDetector:
 
     def process_parallel(self):
         logger.info("Running in parallel mode")
+        print("1")
         self.model.share_memory()
+        print("2")
         worker_loaders = torch.utils.data.random_split(self.det_datasets, [
             1 / self.num_processes] * self.num_processes)
+        print("3")
         processes = []
+        print("processes:" + self.num_workers)
         for worker_id in range(self.num_processes):
             logger.info("Starting process: " + str(worker_id))
             p = mp.Process(target=PollenDetector.process_crop_images,
