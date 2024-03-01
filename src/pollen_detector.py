@@ -1,21 +1,25 @@
 from __future__ import print_function, division
 
-import sys
-import warnings  # ignore warnings
 import json
 import logging
-
+import os
+import sys
+import warnings  # ignore warnings
 from datetime import datetime, timezone
 
+import numpy as np
 import torch
+import torch.multiprocessing as mp
+import torch.nn as nn
+from PIL import Image
 from scipy.ndimage import gaussian_filter
 from skimage import feature
 from skimage import measure
 from skimage.filters import threshold_otsu
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 
-from utils.dataset import *
-from utils.network_arch import *
-from utils.trainval_detSegDistTransform import *
+from utils.network_arch import PollenDet_SegDistTransform
 
 logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger("pollen_detector.py")
@@ -26,7 +30,8 @@ logger.info(torch.__version__)
 
 
 class PollenDetector:
-    def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, batch_size):
+    def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, num_workers,
+                 batch_size):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
 
@@ -37,6 +42,7 @@ class PollenDetector:
         self.detections_dir_path = detections_dir_path_prefix + "_" + datetime_postfix
 
         self.num_processes = num_processes
+        self.num_workers = num_workers
         self.batch_size = batch_size
         self.model = None
         self.dbinfo = None
@@ -62,11 +68,14 @@ class PollenDetector:
         self.model.eval()
         self.model.training = False
 
-    def initialize_data(self):
-        logger.info("Initializing data")
-        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo, size=self.tensor_size)
+    def initialize_dataset(self):
+        logger.info("Initializing dataset")
+        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo)
 
-        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=False, num_workers=0)
+    def initialize_data_loader(self):
+        logger.info("Initializing data loader")
+        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=False,
+                                      num_workers=self.num_workers)
 
     def generate_dbinfo(self):
         """
@@ -180,16 +189,35 @@ class PollenDetector:
 
         return bbox_list_new, bbox_list_new_txt
 
-    def process_crop_images(self):
+    def process_parallel(self):
+        logger.info("Running in parallel mode")
+        self.model.share_memory()
+        worker_loaders = torch.utils.data.random_split(self.det_datasets, [
+            1 / self.num_processes] * self.num_processes)
+        processes = []
+        for worker_id in range(self.num_processes):
+            p = mp.Process(target=PollenDetector.process_crop_images,
+                           args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
+                                                  worker_init_fn=worker_init_fn(worker_id),
+                                                  num_workers=self.num_workers)))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+
+    def process_crop_images(self, data_loader=None):
         logger.info("Processing crop images")
 
         if not os.path.exists(self.detections_dir_path):
             os.makedirs(self.detections_dir_path)
 
+        if data_loader is None:
+            data_loader = self.data_loader
+
         iter_count, sample_count = 0, 0
 
         with torch.no_grad():
-            for sample in self.data_loader:
+            for sample in data_loader:
                 iter_count += 1
 
                 if iter_count % 25 == 0:
@@ -205,47 +233,6 @@ class PollenDetector:
                 pred_dist_transform_output = pred_dist_transform_output.squeeze().cpu().detach().numpy()
                 softmax_output = pred_seg
                 softmax_output = softmax_output.squeeze().cpu().detach().numpy()
-
-                # prediction:
-                # create a list of (800x800) prediction distance transforms crops and softmax crops
-
-                # pred_dist_transform_crops = []
-                # softmax_crops = []
-
-                # for idx in range(0, self.batch_size):
-                #     tmp_img = pred_dist_transform[idx, :, :, :].squeeze().cpu().detach().numpy()
-                #     pred_dist_transform_crops.append(tmp_img)
-                #
-                # for idx in range(0, self.batch_size):
-                #     tmp_img = softmax[idx, :, :, :].squeeze().cpu().detach().numpy()
-                #     softmax_crops.append(tmp_img)
-
-                # # visualize the distance transform crops
-                # for i in range(len(pred_dist_transform_crops)):
-                #     plt.imshow(pred_dist_transform_crops[i], vmax=1, vmin=0)
-                #     plt.show()
-                #
-                # # visualize the softmax crops
-                # for i in range(len(softmax_crops)):
-                #     plt.imshow(softmax_crops[i], vmax=1, vmin=0)
-                #     plt.show()
-
-                # create full-sized pred distance transform
-                # mask_org_size = cur_img.squeeze().cpu().detach().numpy()
-
-                # tmp_pred_dist_transform_1 = np.zeros_like(mask_org_size).astype(np.float32)
-
-                # tmp_pred_dist_transform_1[0:self.tensor_size[0], 0:self.tensor_size[0]] = pred_dist_transform_crops[0]
-
-                # pred_dist_transform = np.maximum.reduce(
-                #     [pred_dist_transform_crops])
-                # pred_dist_transform = gaussian_filter(pred_dist_transform, sigma=10)  # gaussian blur to get rid of shadow
-
-                # tmp_softmax_1 = np.zeros_like(mask_org_size).astype(np.float32)
-                #
-                # tmp_softmax_1[0:self.tensor_size[0], 0:self.tensor_size[0]] = softmax_crops[0]
-                #
-                # softmax = np.nanmean(np.array([tmp_softmax_1]), axis=0)
 
                 for index in range(softmax_output.shape[0]):
                     softmax = softmax_output[index]
@@ -345,7 +332,7 @@ class PollenDetector:
                         slices = []
 
                         for idx in range(len(slice_paths)):
-                            img_slice = PIL.Image.open(slice_paths[idx])
+                            img_slice = Image.open(slice_paths[idx])
                             img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
                             slices.append(img_slice)
 
@@ -377,7 +364,7 @@ class PollenDetector:
                             img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
 
                             if isinstance(slices[m], np.ndarray):
-                                img_slice = PIL.Image.fromarray(slices[m])
+                                img_slice = Image.fromarray(slices[m])
                                 img_slice.save(img_filename)
 
                         # save cropped mask
@@ -390,7 +377,7 @@ class PollenDetector:
                             k += 1
 
                         if isinstance(crop_mask, np.ndarray):
-                            crop_mask = PIL.Image.fromarray((crop_mask * 255).astype(np.uint8))
+                            crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
                         crop_mask.save(mask_filename)
 
                         # save metadata
@@ -408,23 +395,18 @@ class PollenDetector:
                 logger.info("Completed processing crop images: " + str(current_example))
 
 
+def worker_init_fn(worker_id):
+    torch.manual_seed(np.random.get_state()[1][0] + worker_id)
+
+
 class PollenDet4Eval(Dataset):
-    def __init__(self, path_to_image, dbinfo, size):
+    def __init__(self, path_to_image, dbinfo):
 
         self.path_to_image = path_to_image
-        self.transform = transform
         self.dbinfo = dbinfo
-        self.size = size
-        self.resizeFactor = size[0] / 1000
-
         self.sampleList = self.dbinfo['cropped_images_list']
-
-        self.TFNormalize = transforms.Normalize([0.5] * 27, [0.5] * 27)
         self.current_set_len = len(self.sampleList)
-
         self.TF2tensor = transforms.ToTensor()
-        self.TF2PIL = transforms.ToPILImage()
-        self.TFresize = transforms.Resize((self.size[0], self.size[1]))
 
     def __len__(self):
         return self.current_set_len

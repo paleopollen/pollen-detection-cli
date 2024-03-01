@@ -27,7 +27,8 @@ python pollen_detection_cli.py -m <model full path> -c <tile crops directory ful
 ## Usage
 
 ```shell
-usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--num-processes [NUM_PROCESSES]] [--batch-size [BATCH_SIZE]] [--verbose]
+usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] [--num-processes [NUM_PROCESSES]]
+                               [--num-workers [NUM_WORKERS]] [--batch-size [BATCH_SIZE]] [--verbose]
 
 Process PNG image stacks and detect pollen grains.
 
@@ -39,8 +40,11 @@ optional arguments:
                         Full path of the directory containing the cropped image files.
   --detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX], -d [DETECTIONS_DIR_PATH_PREFIX]
                         Full path prefix of the directory to store the detection results.
+  --parallel, -p        Run the detection in parallel.
   --num-processes [NUM_PROCESSES], -n [NUM_PROCESSES]
                         Number of processes to use for parallel processing.
+  --num-workers [NUM_WORKERS], -w [NUM_WORKERS]
+                        Number of data loading workers to use for parallel processing.
   --batch-size [BATCH_SIZE], -b [BATCH_SIZE]
                         Batch size for parallel processing.
   --verbose, -v         Display more details.
