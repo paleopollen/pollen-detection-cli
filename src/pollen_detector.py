@@ -196,6 +196,7 @@ class PollenDetector:
             1 / self.num_processes] * self.num_processes)
         processes = []
         for worker_id in range(self.num_processes):
+            logger.info("Starting process: " + str(worker_id))
             p = mp.Process(target=PollenDetector.process_crop_images,
                            args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
                                                   worker_init_fn=worker_init_fn(worker_id),
