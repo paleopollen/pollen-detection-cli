@@ -220,6 +220,7 @@ class PollenDetector:
 
         with torch.no_grad():
             for sample in data_loader:
+                start_time = datetime.now()
                 iter_count += 1
 
                 if iter_count % 25 == 0:
@@ -395,6 +396,8 @@ class PollenDetector:
                             json.dump(metadata, metadata_json_file, indent=2)
 
                 logger.info("Completed processing crop images: " + str(current_example))
+                duration = datetime.now() - start_time
+                logger.info("Duration: " + str(duration))
 
 
 def worker_init_fn(worker_id):
