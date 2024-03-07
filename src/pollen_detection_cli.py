@@ -2,6 +2,7 @@ import argparse
 import logging
 
 from pollen_detector import PollenDetector
+import torch.multiprocessing as mp
 
 
 class PollenDetectionCLI:
@@ -68,6 +69,7 @@ if __name__ == '__main__':
     pollen_detector.initialize_dataset()
     pollen_detector.initialize_model()
     if cli.args.parallel:
+        mp.set_start_method('spawn', force=True)
         pollen_detector.process_parallel()
     else:
         pollen_detector.initialize_data_loader()
