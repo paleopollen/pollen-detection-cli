@@ -69,7 +69,8 @@ if __name__ == '__main__':
     pollen_detector.initialize_dataset()
     pollen_detector.initialize_model()
     if cli.args.parallel:
-        mp.set_start_method('spawn', force=True)
+        mp.set_start_method('spawn',
+                            force=True)  # Ref: https://github.com/pytorch/pytorch/issues/804#issuecomment-1839388574
         pollen_detector.process_parallel()
     else:
         pollen_detector.initialize_data_loader()
