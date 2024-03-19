@@ -1,19 +1,25 @@
 from __future__ import print_function, division
 
-import sys
-import warnings  # ignore warnings
 import json
 import logging
-
+import os
+import sys
+import warnings  # ignore warnings
 from datetime import datetime, timezone
+
+import numpy as np
+import torch
+import torch.multiprocessing as mp
+import torch.nn as nn
+from PIL import Image
 from scipy.ndimage import gaussian_filter
 from skimage import feature
 from skimage import measure
 from skimage.filters import threshold_otsu
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 
-from utils.dataset import *
-from utils.network_arch import *
-from utils.trainval_detSegDistTransform import *
+from utils.network_arch import PollenDet_SegDistTransform
 
 logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger("pollen_detector.py")
@@ -24,7 +30,8 @@ logger.info(torch.__version__)
 
 
 class PollenDetector:
-    def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix):
+    def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, num_workers,
+                 batch_size):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
 
@@ -34,6 +41,9 @@ class PollenDetector:
         datetime_postfix = now.strftime("%Y-%m-%d_%H-%M-%S")
         self.detections_dir_path = detections_dir_path_prefix + "_" + datetime_postfix
 
+        self.num_processes = num_processes
+        self.num_workers = num_workers
+        self.batch_size = batch_size
         self.model = None
         self.dbinfo = None
         self.det_datasets = None
@@ -41,6 +51,7 @@ class PollenDetector:
         self.conf_thresh = 0.013481323
         self.device = "cpu"
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
+        logger.info("Available CPU Count: " + str(mp.cpu_count()))
 
     def initialize_model(self):
         logger.info("Initializing model")
@@ -58,11 +69,14 @@ class PollenDetector:
         self.model.eval()
         self.model.training = False
 
-    def initialize_data(self):
-        logger.info("Initializing data")
-        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo, size=self.tensor_size)
+    def initialize_dataset(self):
+        logger.info("Initializing dataset")
+        self.det_datasets = PollenDet4Eval(path_to_image=self.crops_dir_path, dbinfo=self.dbinfo)
 
-        self.data_loader = DataLoader(self.det_datasets, batch_size=1, shuffle=False, num_workers=0)
+    def initialize_data_loader(self):
+        logger.info("Initializing data loader")
+        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=False,
+                                      num_workers=self.num_workers)
 
     def generate_dbinfo(self):
         """
@@ -176,225 +190,234 @@ class PollenDetector:
 
         return bbox_list_new, bbox_list_new_txt
 
-    def process_crop_images(self):
+    def process_parallel(self):
+        logger.info("Running in parallel mode")
+        self.model.share_memory()
+        worker_loaders = torch.utils.data.random_split(self.det_datasets, [
+            1 / self.num_processes] * self.num_processes)
+        processes = []
+        for worker_id in range(self.num_processes):
+            logger.info("Starting process: " + str(worker_id))
+            p = mp.Process(target=PollenDetector.process_crop_images,
+                           args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
+                                                  worker_init_fn=worker_init_fn(worker_id),
+                                                  num_workers=self.num_workers)))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+
+    def process_crop_images(self, data_loader=None):
         logger.info("Processing crop images")
 
         if not os.path.exists(self.detections_dir_path):
             os.makedirs(self.detections_dir_path)
 
+        if data_loader is None:
+            data_loader = self.data_loader
+
         iter_count, sample_count = 0, 0
-        for sample in self.data_loader:
-            iter_count += 1
 
-            if iter_count % 25 == 0:
-                logger.info('{}/{}'.format(iter_count, len(self.det_datasets)))
+        with torch.no_grad():
+            for sample in data_loader:
+                start_time = datetime.now()
+                iter_count += 1
 
-            cur_img, current_example = sample
-            logger.info("Started processing crop image: " + str(current_example))
-            cur_img = cur_img.to(self.device)
+                if iter_count % 25 == 0:
+                    logger.info('{}/{}'.format(iter_count, len(self.det_datasets)))
 
-            outputs = self.model(cur_img)
-            pred_seg = outputs[('segMask', 0)]
-            pred_dist_transform = outputs[('output', 0)]
-            softmax = pred_seg
+                cur_img, current_example = sample
+                logger.info("Started processing crop images: " + str(current_example))
+                cur_img = cur_img.to(self.device)
 
-            # prediction:
-            # create a list of (800x800) prediction distance transforms crops and softmax crops
+                outputs = self.model(cur_img)
+                pred_seg = outputs[('segMask', 0)]
+                pred_dist_transform_output = outputs[('output', 0)]
+                pred_dist_transform_output = pred_dist_transform_output.squeeze().cpu().detach().numpy()
+                softmax_output = pred_seg.squeeze().cpu().detach().numpy()
 
-            pred_dist_transform_crops = []
-            softmax_crops = []
+                for index in range(cur_img.shape[0]):
+                    if softmax_output.ndim == 3:
+                        softmax = softmax_output[index]
+                        pred_dist_transform = gaussian_filter(pred_dist_transform_output[index], sigma=10)
+                    elif softmax_output.ndim == 2:
+                        softmax = softmax_output
+                        pred_dist_transform = gaussian_filter(pred_dist_transform_output, sigma=10)
+                    else:
+                        logger.error("Invalid softmax_output.ndim: " + str(softmax_output.ndim))
+                        raise ValueError("Invalid softmax_output.ndim: " + str(softmax_output.ndim))
 
-            for idx in range(0, 1):
-                tmp_img = pred_dist_transform[idx, :, :, :].squeeze().cpu().detach().numpy()
-                pred_dist_transform_crops.append(tmp_img)
+                    # find peaks, zero-out background noise
+                    voting4center = np.copy(pred_dist_transform)
+                    voting4center[voting4center < 0.001] = 0
+                    coord_peaks = feature.peak_local_max(voting4center, min_distance=25,
+                                                         exclude_border=False)  # originally min_distance =5, changed to 25
 
-            for idx in range(0, 1):
-                tmp_img = softmax[idx, :, :, :].squeeze().cpu().detach().numpy()
-                softmax_crops.append(tmp_img)
+                    # list filenames for images in the stack
+                    slice_paths = []
+                    current_image_path = os.path.join(self.crops_dir_path, current_example[0][index],
+                                                      current_example[1][index])
+                    for file in sorted(os.listdir(str(current_image_path))):
+                        if file.endswith('.png'):
+                            slice_path = os.path.join(str(current_image_path), file)
+                            slice_paths.append(slice_path)
 
-            # create full-sized pred distance transform
-            mask_org_size = cur_img.squeeze().cpu().detach().numpy()[0, :, :]
+                    # create detection mask using peaks and predicted radius
+                    pred_radius_list = []
+                    detection_info2 = []
 
-            tmp_pred_dist_transform_1 = np.zeros_like(mask_org_size).astype(np.float32)
+                    size = (400, 400)
 
-            tmp_pred_dist_transform_1[0:self.tensor_size[0], 0:self.tensor_size[0]] = pred_dist_transform_crops[0]
+                    for i in range(coord_peaks.shape[0]):
+                        # create full image detection mask
+                        y, x = coord_peaks[i]
 
-            pred_dist_transform = np.maximum.reduce(
-                [tmp_pred_dist_transform_1])
-            pred_dist_transform = gaussian_filter(pred_dist_transform, sigma=10)  # gaussian blur to get rid of shadow
+                        left = int(x - (size[0] / 2))
+                        left = max(left, 0)
+                        top = int(y - (size[0] / 2))
+                        top = max(top, 0)
+                        right = int(x + (size[0] / 2))
+                        right = max(right, 0)
+                        bottom = int(y + (size[0] / 2))
+                        bottom = max(bottom, 0)
 
-            tmp_softmax_1 = np.zeros_like(mask_org_size).astype(np.float32)
+                        tmp_crop = softmax[top:bottom, left:right]
+                        thresh = threshold_otsu(tmp_crop)
+                        tmp_crop = tmp_crop > thresh  # binarize
+                        tmp_crop = measure.label(tmp_crop, background=0)
+                        props = measure.regionprops(tmp_crop)  # get the properties of the connected components
 
-            tmp_softmax_1[0:self.tensor_size[0], 0:self.tensor_size[0]] = softmax_crops[0]
+                        diameter = [prop.major_axis_length for prop in props]  # diameter for connected components
+                        if len(diameter) != 0 and max(diameter) != 0:
+                            radius = int(max(diameter) / 2)
 
-            softmax = np.nanmean(np.array([tmp_softmax_1]), axis=0)
+                            pred_radius_list += [radius]
+                            a = len(pred_radius_list) - 1
 
-            # find peaks, zero-out background noise
-            voting4center = np.copy(pred_dist_transform)
-            voting4center[voting4center < 0.001] = 0
-            coord_peaks = feature.peak_local_max(voting4center, min_distance=25,
-                                                 exclude_border=False)  # originally min_distance =5, changed to 25
+                            tmp_mask = voting4center * 0
+                            tmp_mask = PollenDetector.create_circular_mask(tmp_mask, [y, x], pred_radius_list[a],
+                                                                           value=1)
 
-            # list filenames for images in the stack
-            slice_paths = []
-            current_image_path = os.path.join(self.crops_dir_path, current_example[0][0], current_example[1][0])
-            for file in sorted(os.listdir(str(current_image_path))):
-                if file.endswith('.png'):
-                    slice_path = os.path.join(str(current_image_path), file)
-                    slice_paths.append(slice_path)
+                            class_name = "det"
+                            left_bb = x - radius
+                            left_bb = max(left_bb, 0)
+                            top_bb = y - radius
+                            top_bb = max(top_bb, 0)
+                            right_bb = x + radius
+                            right_bb = max(right_bb, 0)
+                            bottom_bb = y + radius
+                            bottom_bb = max(bottom_bb, 0)
 
-            # create detection mask using peaks and predicted radius
-            pred_radius_list = []
-            detection_info2 = []
+                            masked_softmax = np.ma.masked_where(tmp_mask == 0, softmax)
+                            confidence = np.nanmean(masked_softmax)
+                            bbox_info2 = [class_name, confidence, left_bb, top_bb, right_bb, bottom_bb]
 
-            size = (400, 400)
+                            detection_info2.append(bbox_info2)
 
-            for i in range(coord_peaks.shape[0]):
-                # create full image detection mask
-                y, x = coord_peaks[i]
+                    # Apply non-max suppression
+                    nms_bb = PollenDetector.nms(detection_info2, conf_threshold=self.conf_thresh, iou_threshold=0.3)
+                    nms_bb = nms_bb[0]
 
-                left = int(x - (size[0] / 2))
-                left = max(left, 0)
-                top = int(y - (size[0] / 2))
-                top = max(top, 0)
-                right = int(x + (size[0] / 2))
-                right = max(right, 0)
-                bottom = int(y + (size[0] / 2))
-                bottom = max(bottom, 0)
+                    # create detection mask and center mask using the information on each detection in [NMS_bb]
+                    det_mask = voting4center * 0
 
-                tmp_crop = softmax[top:bottom, left:right]
-                thresh = threshold_otsu(tmp_crop)
-                tmp_crop = tmp_crop > thresh  # binarize
-                tmp_crop = measure.label(tmp_crop, background=0)
-                props = measure.regionprops(tmp_crop)  # get the properties of the connected components
+                    for i in range(len(nms_bb)):
+                        logger.info(
+                            "Pollen detected: " + current_example[0][index] + " " + current_example[1][index])
+                        confidence = float(nms_bb[i][1])
+                        left_bb = int(nms_bb[i][2])
+                        top_bb = int(nms_bb[i][3])
+                        right_bb = int(nms_bb[i][4])
+                        bottom_bb = int(nms_bb[i][5])
+                        diameter = max(right_bb - left_bb, bottom_bb - top_bb)
+                        radius = diameter / 2
+                        x = left_bb + radius
+                        y = top_bb + radius
+                        det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
+                        # crop detection mask
+                        crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
 
-                diameter = [prop.major_axis_length for prop in props]  # diameter for connected components
-                if len(diameter) != 0 and max(diameter) != 0:
-                    radius = int(max(diameter) / 2)
+                        # crop image and stack slices together
+                        slices = []
 
-                    pred_radius_list += [radius]
-                    a = len(pred_radius_list) - 1
+                        for idx in range(len(slice_paths)):
+                            img_slice = Image.open(slice_paths[idx])
+                            img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
+                            slices.append(img_slice)
 
-                    tmp_mask = voting4center * 0
-                    tmp_mask = PollenDetector.create_circular_mask(tmp_mask, [y, x], pred_radius_list[a], value=1)
+                        img_path = self.detections_dir_path
+                        metadata: dict = dict()
+                        metadata["sample_filename"] = current_example[0][index]
+                        metadata["crop_image_coordinates"] = current_example[1][index]
+                        metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
+                            right_bb) + "," + str(bottom_bb) + "))"
+                        metadata["confidence"] = confidence
+                        metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime(
+                            "%Y-%m-%dT%H:%M:%S.%f")[
+                                                             :-3] + 'Z'
 
-                    class_name = "det"
-                    left_bb = x - radius
-                    left_bb = max(left_bb, 0)
-                    top_bb = y - radius
-                    top_bb = max(top_bb, 0)
-                    right_bb = x + radius
-                    right_bb = max(right_bb, 0)
-                    bottom_bb = y + radius
-                    bottom_bb = max(bottom_bb, 0)
+                        k = 1
+                        img_path_2 = os.path.join(str(img_path),
+                                                  current_example[0][index] + '_' + current_example[1][
+                                                      index] + '_' + str(
+                                                      k))
+                        while os.path.exists(img_path_2):
+                            img_path_2 = os.path.join(str(img_path),
+                                                      current_example[0][index] + '_' + current_example[1][
+                                                          index] + '_' + str(k))
+                            k += 1
 
-                    masked_softmax = np.ma.masked_where(tmp_mask == 0, softmax)
-                    confidence = np.nanmean(masked_softmax)
-                    bbox_info2 = [class_name, confidence, left_bb, top_bb, right_bb, bottom_bb]
+                        for m in range(len(slices)):
+                            if not os.path.exists(img_path_2):
+                                os.makedirs(img_path_2)
+                            img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
 
-                    detection_info2.append(bbox_info2)
+                            if isinstance(slices[m], np.ndarray):
+                                img_slice = Image.fromarray(slices[m])
+                                img_slice.save(img_filename)
 
-            # Apply non-max suppression
-            nms_bb = PollenDetector.nms(detection_info2, conf_threshold=self.conf_thresh, iou_threshold=0.3)
-            nms_bb = nms_bb[0]
+                        # save cropped mask
+                        mask_path = img_path_2
 
-            # create detection mask and center mask using the information on each detection in [NMS_bb]
-            det_mask = voting4center * 0
+                        k = 1
+                        mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
+                        while os.path.exists(mask_filename):
+                            mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
+                            k += 1
 
-            for i in range(len(nms_bb)):
-                confidence = float(nms_bb[i][1])
-                left_bb = int(nms_bb[i][2])
-                top_bb = int(nms_bb[i][3])
-                right_bb = int(nms_bb[i][4])
-                bottom_bb = int(nms_bb[i][5])
-                diameter = max(right_bb - left_bb, bottom_bb - top_bb)
-                radius = diameter / 2
-                x = left_bb + radius
-                y = top_bb + radius
-                det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
-                # crop detection mask
-                crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
+                        if isinstance(crop_mask, np.ndarray):
+                            crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
+                        crop_mask.save(mask_filename)
 
-                # crop image and stack slices together
-                slices = []
+                        # save metadata
+                        metadata_path = img_path_2
 
-                for idx in range(len(slice_paths)):
-                    img_slice = PIL.Image.open(slice_paths[idx])
-                    img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
-                    slices.append(img_slice)
+                        k = 1
+                        metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
+                        while os.path.exists(metadata_filename):
+                            metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
+                            k += 1
 
-                img_path = self.detections_dir_path
-                metadata: dict = dict()
-                metadata["sample_filename"] = current_example[0][0]
-                metadata["crop_image_coordinates"] = current_example[1][0]
-                metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
-                    right_bb) + "," + str(bottom_bb) + "))"
-                metadata["confidence"] = confidence
-                metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
-                                                     :-3] + 'Z'
+                        with open(metadata_filename, "w") as metadata_json_file:
+                            json.dump(metadata, metadata_json_file, indent=2)
 
-                k = 1
-                img_path_2 = os.path.join(str(img_path),
-                                          current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
-                while os.path.exists(img_path_2):
-                    img_path_2 = os.path.join(str(img_path),
-                                              current_example[0][0] + '_' + current_example[1][0] + '_' + str(k))
-                    k += 1
+                logger.info("Completed processing crop images: " + str(current_example))
+                duration = datetime.now() - start_time
+                logger.info("Duration: " + str(duration))
 
-                for m in range(len(slices)):
-                    if not os.path.exists(img_path_2):
-                        os.makedirs(img_path_2)
-                    img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
 
-                    if isinstance(slices[m], np.ndarray):
-                        img_slice = PIL.Image.fromarray(slices[m])
-                        img_slice.save(img_filename)
-
-                # save cropped mask
-                mask_path = img_path_2
-
-                k = 1
-                mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-                while os.path.exists(mask_filename):
-                    mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-                    k += 1
-
-                if isinstance(crop_mask, np.ndarray):
-                    crop_mask = PIL.Image.fromarray((crop_mask * 255).astype(np.uint8))
-                crop_mask.save(mask_filename)
-
-                # save metadata
-                metadata_path = img_path_2
-
-                k = 1
-                metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-                while os.path.exists(metadata_filename):
-                    metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-                    k += 1
-
-                with open(metadata_filename, "w") as metadata_json_file:
-                    json.dump(metadata, metadata_json_file, indent=2)
-
-            logger.info("Completed processing crop image: " + str(current_example))
+def worker_init_fn(worker_id):
+    torch.manual_seed(np.random.get_state()[1][0] + worker_id)
 
 
 class PollenDet4Eval(Dataset):
-    def __init__(self, path_to_image, dbinfo, size):
+    def __init__(self, path_to_image, dbinfo):
 
         self.path_to_image = path_to_image
-        self.transform = transform
         self.dbinfo = dbinfo
-        self.size = size
-        self.resizeFactor = size[0] / 1000
-
         self.sampleList = self.dbinfo['cropped_images_list']
-
-        self.TFNormalize = transforms.Normalize([0.5] * 27, [0.5] * 27)
         self.current_set_len = len(self.sampleList)
-
         self.TF2tensor = transforms.ToTensor()
-        self.TF2PIL = transforms.ToPILImage()
-        self.TFresize = transforms.Resize((self.size[0], self.size[1]))
 
     def __len__(self):
         return self.current_set_len

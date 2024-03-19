@@ -2,6 +2,7 @@ import argparse
 import logging
 
 from pollen_detector import PollenDetector
+import torch.multiprocessing as mp
 
 
 class PollenDetectionCLI:
@@ -18,13 +19,23 @@ class PollenDetectionCLI:
         # Crop images directory path
         self.parser.add_argument("--crops-dir", "-c", type=str, dest="crops_dir_path", nargs='?', default=None,
                                  required=True, help="Full path of the directory containing the cropped image files.")
-
         # Detections output directory path
         self.parser.add_argument("--detections-dir-prefix", "-d", type=str, dest="detections_dir_path_prefix",
                                  nargs="?",
                                  default="detections", required=False,
                                  help="Full path prefix of the directory to store the detection results.")
-
+        # Run in parallel
+        self.parser.add_argument("--parallel", "-p", action="store_true", dest="parallel", default=False,
+                                 help="Run the detection in parallel.")
+        # Number of processes
+        self.parser.add_argument("--num-processes", "-n", type=int, dest="num_processes", nargs="?", default=8,
+                                 help="Number of processes to use for parallel processing.")
+        # Number of data loading workers 0 or greater
+        self.parser.add_argument("--num-workers", "-w", type=int, dest="num_workers", nargs="?", default=0,
+                                 help="Number of data loading workers to use for parallel processing.")
+        # Batch size
+        self.parser.add_argument("--batch-size", "-b", type=int, dest="batch_size", nargs="?", default=8,
+                                 help="Batch size for parallel processing.")
         # Verbose
         self.parser.add_argument("--verbose", "-v", action="store_true", dest="verbose", default=False,
                                  help="Display more details.")
@@ -51,10 +62,18 @@ if __name__ == '__main__':
     cli.print_args()
 
     pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path,
-                                     cli.args.detections_dir_path_prefix)
+                                     cli.args.detections_dir_path_prefix, cli.args.num_processes, cli.args.num_workers,
+                                     cli.args.batch_size)
+
     pollen_detector.generate_dbinfo()
-    pollen_detector.initialize_data()
+    pollen_detector.initialize_dataset()
     pollen_detector.initialize_model()
-    pollen_detector.process_crop_images()
+    if cli.args.parallel:
+        mp.set_start_method('spawn',
+                            force=True)  # Ref: https://github.com/pytorch/pytorch/issues/804#issuecomment-1839388574
+        pollen_detector.process_parallel()
+    else:
+        pollen_detector.initialize_data_loader()
+        pollen_detector.process_crop_images()
 
     logger.info("Stopping Pollen Detection CLI")
