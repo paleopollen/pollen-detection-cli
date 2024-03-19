@@ -234,12 +234,18 @@ class PollenDetector:
                 pred_seg = outputs[('segMask', 0)]
                 pred_dist_transform_output = outputs[('output', 0)]
                 pred_dist_transform_output = pred_dist_transform_output.squeeze().cpu().detach().numpy()
-                softmax_output = pred_seg
-                softmax_output = softmax_output.squeeze().cpu().detach().numpy()
+                softmax_output = pred_seg.squeeze().cpu().detach().numpy()
 
-                for index in range(softmax_output.shape[0]):
-                    softmax = softmax_output[index]
-                    pred_dist_transform = gaussian_filter(pred_dist_transform_output[index], sigma=10)
+                for index in range(cur_img.shape[0]):
+                    if softmax_output.ndim == 3:
+                        softmax = softmax_output[index]
+                        pred_dist_transform = gaussian_filter(pred_dist_transform_output[index], sigma=10)
+                    elif softmax_output.ndim == 2:
+                        softmax = softmax_output
+                        pred_dist_transform = gaussian_filter(pred_dist_transform_output, sigma=10)
+                    else:
+                        logger.error("Invalid softmax_output.ndim: " + str(softmax_output.ndim))
+                        raise ValueError("Invalid softmax_output.ndim: " + str(softmax_output.ndim))
 
                     # find peaks, zero-out background noise
                     voting4center = np.copy(pred_dist_transform)
