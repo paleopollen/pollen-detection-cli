@@ -72,8 +72,10 @@ if __name__ == '__main__':
         mp.set_start_method('spawn',
                             force=True)  # Ref: https://github.com/pytorch/pytorch/issues/804#issuecomment-1839388574
         pollen_detector.process_parallel()
+        pollen_detector.process_pollen_detections()
     else:
         pollen_detector.initialize_data_loader()
-        pollen_detector.process_crop_images()
+        pollen_detector.find_potential_pollen_detections()
+        pollen_detector.process_pollen_detections()
 
     logger.info("Stopping Pollen Detection CLI")
