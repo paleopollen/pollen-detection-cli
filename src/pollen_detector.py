@@ -53,6 +53,7 @@ class PollenDetector:
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
         logger.info("Available CPU Count: " + str(mp.cpu_count()))
         self.detections_list = []
+        self.filtered_detections_list = []
 
     def initialize_model(self):
         logger.info("Initializing model")
@@ -171,8 +172,6 @@ class PollenDetector:
         for box in boxes_sorted:
             if box[1] > conf_threshold:
                 bbox_list_threshold_applied.append(box)
-            else:
-                pass
         # Stage 2: loop through the boxes, remove boxes with high IoU
         while len(bbox_list_threshold_applied) > 0:
             current_box = bbox_list_threshold_applied.pop(0)
@@ -185,7 +184,7 @@ class PollenDetector:
 
             for box in bbox_list_threshold_applied:
                 if current_box[0] == box[0]:
-                    iou = PollenDetector.iou(current_box[2:6], box[2:6])
+                    iou = PollenDetector.iou(current_box[8:12], box[8:12])
                     if iou > iou_threshold:
                         bbox_list_threshold_applied.remove(box)
 
@@ -300,10 +299,20 @@ class PollenDetector:
                             bottom_bb = y + radius
                             bottom_bb = max(bottom_bb, 0)
 
+                            # Calculate global coordinates
+                            coord_split_list = current_example[1][index].split('_')
+                            tile_image_coordinate_x = int(coord_split_list[0].split('x')[0])
+                            tile_image_coordinate_y = int(coord_split_list[1].split('y')[0])
+                            left_bb_global = left_bb + tile_image_coordinate_x
+                            top_bb_global = top_bb + tile_image_coordinate_y
+                            right_bb_global = right_bb + tile_image_coordinate_x
+                            bottom_bb_global = bottom_bb + tile_image_coordinate_y
+
                             masked_softmax = np.ma.masked_where(tmp_mask == 0, softmax)
                             confidence = np.nanmean(masked_softmax)
                             bbox_info2 = [class_name, confidence, left_bb, top_bb, right_bb, bottom_bb,
-                                          current_example[0][index], current_example[1][index]]
+                                          current_example[0][index], current_example[1][index], left_bb_global,
+                                          top_bb_global, right_bb_global, bottom_bb_global]
 
                             self.detections_list.append(bbox_info2)
 
@@ -313,17 +322,17 @@ class PollenDetector:
 
     def process_pollen_detections(self):
         # Apply non-max suppression
-        filtered_detections_list = PollenDetector.nms(self.detections_list, conf_threshold=self.conf_thresh,
-                                                      iou_threshold=0.3)
-        filtered_detections_list = filtered_detections_list[0]
+        self.filtered_detections_list = PollenDetector.nms(self.detections_list, conf_threshold=self.conf_thresh,
+                                                           iou_threshold=0.3)
+        self.filtered_detections_list = self.filtered_detections_list[0]
 
         # create detection mask and center mask using the information on each detection in filtered_detections_list
         det_mask = np.zeros((self.tensor_size[0], self.tensor_size[1]), dtype=np.float32)
 
-        for i in range(len(filtered_detections_list)):
+        for i in range(len(self.filtered_detections_list)):
 
-            ndpi_filename = filtered_detections_list[i][6]
-            tile_image_coordinates = filtered_detections_list[i][7]
+            ndpi_filename = self.filtered_detections_list[i][6]
+            tile_image_coordinates = self.filtered_detections_list[i][7]
 
             logger.info(
                 "Pollen detected: " + ndpi_filename + " " + tile_image_coordinates)
@@ -336,11 +345,11 @@ class PollenDetector:
                     slice_path = os.path.join(str(current_image_path), file)
                     slice_paths.append(slice_path)
 
-            confidence = float(filtered_detections_list[i][1])
-            left_bb = int(filtered_detections_list[i][2])
-            top_bb = int(filtered_detections_list[i][3])
-            right_bb = int(filtered_detections_list[i][4])
-            bottom_bb = int(filtered_detections_list[i][5])
+            confidence = float(self.filtered_detections_list[i][1])
+            left_bb = int(self.filtered_detections_list[i][2])
+            top_bb = int(self.filtered_detections_list[i][3])
+            right_bb = int(self.filtered_detections_list[i][4])
+            bottom_bb = int(self.filtered_detections_list[i][5])
             diameter = max(right_bb - left_bb, bottom_bb - top_bb)
             radius = diameter / 2
             x = left_bb + radius
