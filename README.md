@@ -63,3 +63,13 @@ docker build -t pollen-detection .
 ```shell
 docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
 ```
+
+## Parallel mode
+
+```shell
+docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
+```
+
+Here, the `--shm-size=<memory_size_allocated>` option is used to increase the shared memory size for the Docker.
+The default value is 64MB, which may not be enough for the parallel processing. The value should be set according to the
+memory available on the host machine container.
