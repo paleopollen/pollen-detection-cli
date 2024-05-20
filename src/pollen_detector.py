@@ -193,6 +193,11 @@ class PollenDetector:
     def process_parallel(self):
         logger.info("Running in parallel mode")
         self.model.share_memory()
+
+        # Set up the multiprocessing manager to store the list of detections
+        manager = mp.Manager()
+        self.detections_list = manager.list()
+
         worker_loaders = torch.utils.data.random_split(self.det_datasets, [
             1 / self.num_processes] * self.num_processes)
         processes = []
@@ -201,17 +206,20 @@ class PollenDetector:
             p = mp.Process(target=PollenDetector.find_potential_pollen_detections,
                            args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
                                                   worker_init_fn=worker_init_fn(worker_id),
-                                                  num_workers=self.num_workers)))
+                                                  num_workers=self.num_workers), worker_id))
             p.start()
             processes.append(p)
         for p in processes:
             p.join()
 
-    def find_potential_pollen_detections(self, data_loader=None):
+    def find_potential_pollen_detections(self, data_loader=None, process_id=None):
         logger.info("Processing crop images")
 
         if not os.path.exists(self.detections_dir_path):
-            os.makedirs(self.detections_dir_path)
+            try:
+                os.makedirs(self.detections_dir_path)
+            except OSError:
+                logger.error("Creation of the directory %s failed" % self.detections_dir_path)
 
         if data_loader is None:
             data_loader = self.data_loader
@@ -228,7 +236,11 @@ class PollenDetector:
                     logger.info('{}/{}'.format(iter_count, len(self.det_datasets)))
 
                 cur_img, current_example = sample
-                logger.info("Started processing crop images: " + str(current_example))
+                if process_id is not None:
+                    logger.info(
+                        "Process ID: " + str(process_id) + " Started processing crop images: " + str(current_example))
+                else:
+                    logger.info("Started processing crop images: " + str(current_example))
                 cur_img = cur_img.to(self.device)
 
                 outputs = self.model(cur_img)
@@ -316,7 +328,12 @@ class PollenDetector:
 
                             self.detections_list.append(bbox_info2)
 
-                logger.info("Completed finding potential pollen detections on : " + str(current_example))
+                if process_id is not None:
+                    logger.info(
+                        "Process ID: " + str(process_id) + " Completed finding potential pollen detections on : " + str(
+                            current_example))
+                else:
+                    logger.info("Completed finding potential pollen detections on : " + str(current_example))
                 duration = datetime.now() - start_time
                 logger.info("Duration: " + str(duration))
 
