@@ -6,12 +6,14 @@ import os
 import sys
 import warnings  # ignore warnings
 from datetime import datetime, timezone
+from glob import glob
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 from PIL import Image
+from natsort import os_sorted
 from scipy.ndimage import gaussian_filter
 from skimage import feature
 from skimage import measure
@@ -91,10 +93,14 @@ class PollenDetector:
             main_folders = sorted((entry.name for entry in crops_dir if entry.is_dir()))
         main_folders = sorted(main_folders)
         for main_folder in main_folders:
-            with os.scandir(os.path.join(self.crops_dir_path, main_folder)) as main_fd:
-                sub_folders = sorted((entry.name for entry in main_fd if entry.is_dir()))
-                for sub_folder in sub_folders:
-                    dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
+            # TODO: This can be removed later.
+            # with os.scandir(os.path.join(self.crops_dir_path, main_folder)) as main_fd:
+            #     sub_folders = sorted((entry.name for entry in main_fd if entry.is_dir()))
+            
+            # Sort sub folders in natural order
+            sub_folders = os_sorted(glob(os.path.join(self.crops_dir_path, main_folder, '*')))
+            for sub_folder in sub_folders:
+                dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
 
         self.dbinfo = {"cropped_images_list": dir_list}
 
