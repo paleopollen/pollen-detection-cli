@@ -55,7 +55,8 @@ class PollenDetector:
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
         logger.info("Available CPU Count: " + str(mp.cpu_count()))
         self.detections_list = []
-        self.filtered_detections_list = []
+        self.detections_dict = dict()
+        self.filtered_detections_dict = dict()
 
     def initialize_model(self):
         logger.info("Initializing model")
@@ -96,7 +97,7 @@ class PollenDetector:
             # TODO: This can be removed later.
             # with os.scandir(os.path.join(self.crops_dir_path, main_folder)) as main_fd:
             #     sub_folders = sorted((entry.name for entry in main_fd if entry.is_dir()))
-            
+
             # Sort sub folders in natural order
             sub_folders = os_sorted(glob(os.path.join(self.crops_dir_path, main_folder, '*')))
             for sub_folder in sub_folders:
@@ -168,33 +169,42 @@ class PollenDetector:
         return iou
 
     @staticmethod
-    def nms(boxes, conf_threshold=0.1, iou_threshold=0.5):
-        bbox_list_threshold_applied = []
-        bbox_list_new = []
-        bbox_list_new_txt = []
+    def nms(detections_dict, conf_threshold=0.1, iou_threshold=0.5):
 
-        # Stage 1: sort boxes, filter out boxes with low confidence
-        boxes_sorted = sorted(boxes, reverse=True, key=lambda x: x[1])
-        for box in boxes_sorted:
-            if box[1] > conf_threshold:
-                bbox_list_threshold_applied.append(box)
-        # Stage 2: loop through the boxes, remove boxes with high IoU
-        while len(bbox_list_threshold_applied) > 0:
-            current_box = bbox_list_threshold_applied.pop(0)
-            bbox_list_new.append(current_box)
-            current_box_txt = (
-                current_box[0], str(current_box[1]), str(current_box[2]), str(current_box[3]), str(current_box[4]),
-                str(current_box[5]), str(current_box[6]), str(current_box[7]))
-            current_box_txt = ' '.join(current_box_txt)
-            bbox_list_new_txt.append(current_box_txt)
+        detections_dict_new = dict()
+        detections_dict_new_text = dict()
 
-            for box in bbox_list_threshold_applied:
-                if current_box[0] == box[0]:
-                    iou = PollenDetector.iou(current_box[8:12], box[8:12])
-                    if iou > iou_threshold:
-                        bbox_list_threshold_applied.remove(box)
+        for key in detections_dict:
+            bbox_list_threshold_applied = []
+            bbox_list_new = []
+            bbox_list_new_txt = []
+            boxes = detections_dict[key]
 
-        return bbox_list_new, bbox_list_new_txt
+            # Stage 1: sort boxes, filter out boxes with low confidence
+            boxes_sorted = sorted(boxes, reverse=True, key=lambda x: x[1])
+            for box in boxes_sorted:
+                if box[1] > conf_threshold:
+                    bbox_list_threshold_applied.append(box)
+            # Stage 2: loop through the boxes, remove boxes with high IoU
+            while len(bbox_list_threshold_applied) > 0:
+                current_box = bbox_list_threshold_applied.pop(0)
+                bbox_list_new.append(current_box)
+                current_box_txt = (
+                    current_box[0], str(current_box[1]), str(current_box[2]), str(current_box[3]), str(current_box[4]),
+                    str(current_box[5]), str(current_box[6]), str(current_box[7]))
+                current_box_txt = ' '.join(current_box_txt)
+                bbox_list_new_txt.append(current_box_txt)
+
+                for box in bbox_list_threshold_applied:
+                    if current_box[0] == box[0]:
+                        iou = PollenDetector.iou(current_box[8:12], box[8:12])
+                        if iou > iou_threshold:
+                            bbox_list_threshold_applied.remove(box)
+
+            detections_dict_new[key] = bbox_list_new
+            detections_dict_new_text[key] = bbox_list_new_txt
+
+        return detections_dict_new, detections_dict_new_text
 
     def process_parallel(self):
         logger.info("Running in parallel mode")
@@ -344,99 +354,110 @@ class PollenDetector:
                 logger.info("Duration: " + str(duration))
 
     def process_pollen_detections(self):
+
+        # Generate a dictionary of detections based on the image filename
+        detections_list = list(self.detections_list)
+        for detection in detections_list:
+            if detection[6] not in self.detections_dict:
+                self.detections_dict[detection[6]] = []
+            self.detections_dict[detection[6]].append(detection)
+
         # Apply non-max suppression
-        self.filtered_detections_list = PollenDetector.nms(self.detections_list, conf_threshold=self.conf_thresh,
-                                                           iou_threshold=0.3)
-        self.filtered_detections_list = self.filtered_detections_list[0]
+        self.filtered_detections_dict, _ = PollenDetector.nms(self.detections_dict, conf_threshold=self.conf_thresh,
+                                                              iou_threshold=0.3)
 
         # create detection mask and center mask using the information on each detection in filtered_detections_list
         det_mask = np.zeros((self.tensor_size[0], self.tensor_size[1]), dtype=np.float32)
 
-        for i in range(len(self.filtered_detections_list)):
+        for key in self.filtered_detections_dict:
 
-            ndpi_filename = self.filtered_detections_list[i][6]
-            tile_image_coordinates = self.filtered_detections_list[i][7]
+            for i in range(len(self.filtered_detections_dict[key])):
 
-            logger.info(
-                "Pollen detected: " + ndpi_filename + " " + tile_image_coordinates)
+                ndpi_filename = self.filtered_detections_dict[key][i][6]
+                tile_image_coordinates = self.filtered_detections_dict[key][i][7]
 
-            # list filenames for images in the stack
-            slice_paths = []
-            current_image_path = os.path.join(self.crops_dir_path, ndpi_filename, tile_image_coordinates)
-            for file in sorted(os.listdir(str(current_image_path))):
-                if file.endswith('.png'):
-                    slice_path = os.path.join(str(current_image_path), file)
-                    slice_paths.append(slice_path)
+                logger.info(
+                    "Pollen detected: " + ndpi_filename + " " + tile_image_coordinates)
 
-            confidence = float(self.filtered_detections_list[i][1])
-            left_bb = int(self.filtered_detections_list[i][2])
-            top_bb = int(self.filtered_detections_list[i][3])
-            right_bb = int(self.filtered_detections_list[i][4])
-            bottom_bb = int(self.filtered_detections_list[i][5])
-            diameter = max(right_bb - left_bb, bottom_bb - top_bb)
-            radius = diameter / 2
-            x = left_bb + radius
-            y = top_bb + radius
-            det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
-            # crop detection mask
-            crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
+                # list filenames for images in the stack
+                slice_paths = []
+                current_image_path = os.path.join(self.crops_dir_path, ndpi_filename, tile_image_coordinates)
+                for file in sorted(os.listdir(str(current_image_path))):
+                    if file.endswith('.png'):
+                        slice_path = os.path.join(str(current_image_path), file)
+                        slice_paths.append(slice_path)
 
-            # crop image and stack slices together
-            slices = []
+                confidence = float(self.filtered_detections_dict[key][i][1])
+                left_bb = int(self.filtered_detections_dict[key][i][2])
+                top_bb = int(self.filtered_detections_dict[key][i][3])
+                right_bb = int(self.filtered_detections_dict[key][i][4])
+                bottom_bb = int(self.filtered_detections_dict[key][i][5])
+                diameter = max(right_bb - left_bb, bottom_bb - top_bb)
+                radius = diameter / 2
+                x = left_bb + radius
+                y = top_bb + radius
+                det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
+                # crop detection mask
+                crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
 
-            for idx in range(len(slice_paths)):
-                img_slice = Image.open(slice_paths[idx])
-                img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
-                slices.append(img_slice)
+                # crop image and stack slices together
+                slices = []
 
-            img_path = self.detections_dir_path
-            metadata: dict = dict()
-            metadata["sample_filename"] = ndpi_filename
-            metadata["tile_image_coordinates"] = tile_image_coordinates
-            metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
-                right_bb) + "," + str(bottom_bb) + "))"
-            metadata["confidence"] = confidence
-            metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + 'Z'
+                for idx in range(len(slice_paths)):
+                    img_slice = Image.open(slice_paths[idx])
+                    img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
+                    slices.append(img_slice)
 
-            k = 1
-            img_path_2 = os.path.join(str(img_path), ndpi_filename + '_' + tile_image_coordinates + '_' + str(k))
-            while os.path.exists(img_path_2):
+                img_path = self.detections_dir_path
+                metadata: dict = dict()
+                metadata["sample_filename"] = ndpi_filename
+                metadata["tile_image_coordinates"] = tile_image_coordinates
+                metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
+                    right_bb) + "," + str(bottom_bb) + "))"
+                metadata["confidence"] = confidence
+                metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                                                     :-3] + 'Z'
+
+                k = 1
                 img_path_2 = os.path.join(str(img_path), ndpi_filename + '_' + tile_image_coordinates + '_' + str(k))
-                k += 1
+                while os.path.exists(img_path_2):
+                    img_path_2 = os.path.join(str(img_path),
+                                              ndpi_filename + '_' + tile_image_coordinates + '_' + str(k))
+                    k += 1
 
-            for m in range(len(slices)):
-                if not os.path.exists(img_path_2):
-                    os.makedirs(img_path_2)
-                img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
+                for m in range(len(slices)):
+                    if not os.path.exists(img_path_2):
+                        os.makedirs(img_path_2)
+                    img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
 
-                if isinstance(slices[m], np.ndarray):
-                    img_slice = Image.fromarray(slices[m])
-                    img_slice.save(img_filename)
+                    if isinstance(slices[m], np.ndarray):
+                        img_slice = Image.fromarray(slices[m])
+                        img_slice.save(img_filename)
 
-            # save cropped mask
-            mask_path = img_path_2
+                # save cropped mask
+                mask_path = img_path_2
 
-            k = 1
-            mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-            while os.path.exists(mask_filename):
+                k = 1
                 mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-                k += 1
+                while os.path.exists(mask_filename):
+                    mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
+                    k += 1
 
-            if isinstance(crop_mask, np.ndarray):
-                crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
-            crop_mask.save(mask_filename)
+                if isinstance(crop_mask, np.ndarray):
+                    crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
+                crop_mask.save(mask_filename)
 
-            # save metadata
-            metadata_path = img_path_2
+                # save metadata
+                metadata_path = img_path_2
 
-            k = 1
-            metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-            while os.path.exists(metadata_filename):
+                k = 1
                 metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-                k += 1
+                while os.path.exists(metadata_filename):
+                    metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
+                    k += 1
 
-            with open(metadata_filename, "w") as metadata_json_file:
-                json.dump(metadata, metadata_json_file, indent=2)
+                with open(metadata_filename, "w") as metadata_json_file:
+                    json.dump(metadata, metadata_json_file, indent=2)
 
 
 def worker_init_fn(worker_id):
