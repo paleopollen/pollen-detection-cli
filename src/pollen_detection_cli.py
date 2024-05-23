@@ -71,21 +71,11 @@ if __name__ == '__main__':
     if cli.args.parallel:
         mp.set_start_method('spawn',
                             force=True)  # Ref: https://github.com/pytorch/pytorch/issues/804#issuecomment-1839388574
-        try:
-            pollen_detector.process_parallel()
-        except Exception as e:
-            logger.error(f"Error: {e}")
-        finally:
-            logger.info("Processing completed pollen detections")
-            pollen_detector.process_pollen_detections()
+        pollen_detector.process_parallel()
+        pollen_detector.process_pollen_detections()
     else:
         pollen_detector.initialize_data_loader()
-        try:
-            pollen_detector.find_potential_pollen_detections()
-        except Exception as e:
-            logger.error(f"Error: {e}")
-        finally:
-            logger.info("Processing completed pollen detections")
-            pollen_detector.process_pollen_detections()
+        pollen_detector.find_potential_pollen_detections()
+        pollen_detector.process_pollen_detections()
 
     logger.info("Stopping Pollen Detection CLI")

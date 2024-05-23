@@ -3,6 +3,7 @@ from __future__ import print_function, division
 import json
 import logging
 import os
+import signal
 import sys
 import warnings  # ignore warnings
 from datetime import datetime, timezone
@@ -57,6 +58,14 @@ class PollenDetector:
         self.detections_list = []
         self.detections_dict = dict()
         self.filtered_detections_dict = dict()
+
+        # Handle SIGINT and SIGTERM
+        signal.signal(signal.SIGINT, self.exit_program)
+        signal.signal(signal.SIGTERM, self.exit_program)
+
+    def exit_program(self, signum, frame):
+        logger.info("Received signal: " + str(signum))
+        self.process_pollen_detections()
 
     def initialize_model(self):
         logger.info("Initializing model")
@@ -355,6 +364,8 @@ class PollenDetector:
 
     def process_pollen_detections(self):
 
+        logger.info("Starting final processing of pollen detections.")
+
         # Generate a dictionary of detections based on the image filename
         detections_list = list(self.detections_list)
         for detection in detections_list:
@@ -458,6 +469,8 @@ class PollenDetector:
 
                 with open(metadata_filename, "w") as metadata_json_file:
                     json.dump(metadata, metadata_json_file, indent=2)
+
+        logger.info("Completed final processing of pollen detections.")
 
 
 def worker_init_fn(worker_id):
