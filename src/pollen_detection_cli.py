@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+from datetime import datetime
 from pollen_detector import PollenDetector
 import torch.multiprocessing as mp
 
@@ -53,6 +54,7 @@ class PollenDetectionCLI:
 
 
 if __name__ == '__main__':
+    start_time = datetime.now()
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
     logger = logging.getLogger("pollen_detection_cli.py")
 
@@ -79,3 +81,4 @@ if __name__ == '__main__':
         pollen_detector.process_pollen_detections()
 
     logger.info("Stopping Pollen Detection CLI")
+    logger.info("Total execution time: {}".format(datetime.now() - start_time))
