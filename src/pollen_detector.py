@@ -34,7 +34,7 @@ logger.info(torch.__version__)
 
 class PollenDetector:
     def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, num_workers,
-                 batch_size):
+                 batch_size, use_cpu_only=False):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
 
@@ -53,6 +53,7 @@ class PollenDetector:
         self.data_loader = None
         self.conf_thresh = 0.20
         self.device = "cpu"
+        self.use_cpu_only = use_cpu_only
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
         logger.info("Available CPU Count: " + str(mp.cpu_count()))
         self.detections_list = []
@@ -71,7 +72,7 @@ class PollenDetector:
         logger.info("Initializing model")
         # cpu or cuda
         self.device = 'cpu'
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and not self.use_cpu_only:
             self.device = 'cuda:0'
         logger.info(self.device)
 
