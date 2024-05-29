@@ -232,7 +232,7 @@ class PollenDetector:
             p = mp.Process(target=PollenDetector.find_potential_pollen_detections,
                            args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
                                                   worker_init_fn=worker_init_fn(worker_id),
-                                                  num_workers=self.num_workers), worker_id))
+                                                  num_workers=self.num_workers, shuffle=False), worker_id))
             p.start()
             processes.append(p)
         for p in processes:
