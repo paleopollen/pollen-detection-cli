@@ -34,7 +34,7 @@ logger.info(torch.__version__)
 
 class PollenDetector:
     def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, num_workers,
-                 batch_size, use_cpu_only=False):
+                 batch_size, use_cpu_only=False, shuffle=False, verbose=False):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
 
@@ -47,6 +47,8 @@ class PollenDetector:
         self.num_processes = num_processes
         self.num_workers = num_workers
         self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.verbose = verbose
         self.model = None
         self.dbinfo = None
         self.det_datasets = None
@@ -90,7 +92,7 @@ class PollenDetector:
 
     def initialize_data_loader(self):
         logger.info("Initializing data loader")
-        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=False,
+        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=self.shuffle,
                                       num_workers=self.num_workers)
 
     def generate_dbinfo(self):
@@ -224,15 +226,26 @@ class PollenDetector:
         manager = mp.Manager()
         self.detections_list = manager.list()
 
-        worker_loaders = torch.utils.data.random_split(self.det_datasets, [
-            1 / self.num_processes] * self.num_processes)
+        # if shuffle is False, split the dataset into num_processes sequential parts
+        if not self.shuffle:
+            worker_loaders = []
+            for process_index in range(self.num_processes):
+                worker_loader = torch.utils.data.Subset(self.det_datasets,
+                                                        range(process_index, len(self.det_datasets),
+                                                              self.num_processes))
+                worker_loaders.append(worker_loader)
+        # If shuffle is True, split the dataset into num_processes random parts
+        else:
+            worker_loaders = torch.utils.data.random_split(self.det_datasets, [
+                1 / self.num_processes] * self.num_processes)
+
         processes = []
         for worker_id in range(self.num_processes):
             logger.info("Starting process: " + str(worker_id))
             p = mp.Process(target=PollenDetector.find_potential_pollen_detections,
                            args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
                                                   worker_init_fn=worker_init_fn(worker_id),
-                                                  num_workers=self.num_workers, shuffle=False), worker_id))
+                                                  num_workers=self.num_workers, shuffle=self.shuffle), worker_id))
             p.start()
             processes.append(p)
         for p in processes:

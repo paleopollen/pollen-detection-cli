@@ -37,6 +37,9 @@ class PollenDetectionCLI:
         # Batch size
         self.parser.add_argument("--batch-size", "-b", type=int, dest="batch_size", nargs="?", default=8,
                                  help="Batch size for parallel processing.")
+        # Shuffle dataset
+        self.parser.add_argument("--shuffle", "-s", action="store_true", dest="shuffle", default=False,
+                                 help="Shuffle the dataset.")
         # CPU only
         self.parser.add_argument("--cpu", action="store_true", dest="cpu", default=False,
                                  help="Run the detection on CPU only.")
@@ -68,7 +71,7 @@ if __name__ == '__main__':
 
     pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path,
                                      cli.args.detections_dir_path_prefix, cli.args.num_processes, cli.args.num_workers,
-                                     cli.args.batch_size, cli.args.cpu)
+                                     cli.args.batch_size, cli.args.cpu, cli.args.shuffle, cli.args.verbose)
 
     pollen_detector.generate_dbinfo()
     pollen_detector.initialize_dataset()
