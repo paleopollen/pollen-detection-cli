@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+from datetime import datetime
 from pollen_detector import PollenDetector
 import torch.multiprocessing as mp
 
@@ -36,6 +37,12 @@ class PollenDetectionCLI:
         # Batch size
         self.parser.add_argument("--batch-size", "-b", type=int, dest="batch_size", nargs="?", default=8,
                                  help="Batch size for parallel processing.")
+        # Shuffle dataset
+        self.parser.add_argument("--shuffle", "-s", action="store_true", dest="shuffle", default=False,
+                                 help="Shuffle the dataset.")
+        # CPU only
+        self.parser.add_argument("--cpu", action="store_true", dest="cpu", default=False,
+                                 help="Run the detection on CPU only.")
         # Verbose
         self.parser.add_argument("--verbose", "-v", action="store_true", dest="verbose", default=False,
                                  help="Display more details.")
@@ -53,6 +60,7 @@ class PollenDetectionCLI:
 
 
 if __name__ == '__main__':
+    start_time = datetime.now()
     logging.basicConfig(format='%(asctime)s %(levelname)-7s : %(name)s - %(message)s', level=logging.INFO)
     logger = logging.getLogger("pollen_detection_cli.py")
 
@@ -63,7 +71,7 @@ if __name__ == '__main__':
 
     pollen_detector = PollenDetector(cli.args.model_file_path, cli.args.crops_dir_path,
                                      cli.args.detections_dir_path_prefix, cli.args.num_processes, cli.args.num_workers,
-                                     cli.args.batch_size)
+                                     cli.args.batch_size, cli.args.cpu, cli.args.shuffle, cli.args.verbose)
 
     pollen_detector.generate_dbinfo()
     pollen_detector.initialize_dataset()
@@ -72,8 +80,11 @@ if __name__ == '__main__':
         mp.set_start_method('spawn',
                             force=True)  # Ref: https://github.com/pytorch/pytorch/issues/804#issuecomment-1839388574
         pollen_detector.process_parallel()
+        pollen_detector.process_pollen_detections()
     else:
         pollen_detector.initialize_data_loader()
-        pollen_detector.process_crop_images()
+        pollen_detector.find_potential_pollen_detections()
+        pollen_detector.process_pollen_detections()
 
     logger.info("Stopping Pollen Detection CLI")
+    logger.info("Total execution time: {}".format(datetime.now() - start_time))

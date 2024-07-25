@@ -3,15 +3,18 @@ from __future__ import print_function, division
 import json
 import logging
 import os
+import signal
 import sys
 import warnings  # ignore warnings
 from datetime import datetime, timezone
+from glob import glob
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 from PIL import Image
+from natsort import os_sorted
 from scipy.ndimage import gaussian_filter
 from skimage import feature
 from skimage import measure
@@ -31,7 +34,7 @@ logger.info(torch.__version__)
 
 class PollenDetector:
     def __init__(self, model_file_path, crops_dir_path, detections_dir_path_prefix, num_processes, num_workers,
-                 batch_size):
+                 batch_size, use_cpu_only=False, shuffle=False, verbose=False):
         self.model_file_path = model_file_path
         self.crops_dir_path = crops_dir_path
 
@@ -44,20 +47,34 @@ class PollenDetector:
         self.num_processes = num_processes
         self.num_workers = num_workers
         self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.verbose = verbose
         self.model = None
         self.dbinfo = None
         self.det_datasets = None
         self.data_loader = None
-        self.conf_thresh = 0.013481323
+        self.conf_thresh = 0.20
         self.device = "cpu"
+        self.use_cpu_only = use_cpu_only
         self.tensor_size = [1024, 1024]  # set to crop size, to tell model what size tensor to expect
         logger.info("Available CPU Count: " + str(mp.cpu_count()))
+        self.detections_list = []
+        self.detections_dict = dict()
+        self.filtered_detections_dict = dict()
+
+        # Handle SIGINT and SIGTERM
+        signal.signal(signal.SIGINT, self.exit_program)
+        signal.signal(signal.SIGTERM, self.exit_program)
+
+    def exit_program(self, signum, frame):
+        logger.info("Received signal: " + str(signum))
+        self.process_pollen_detections()
 
     def initialize_model(self):
         logger.info("Initializing model")
         # cpu or cuda
         self.device = 'cpu'
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and not self.use_cpu_only:
             self.device = 'cuda:0'
         logger.info(self.device)
 
@@ -75,7 +92,7 @@ class PollenDetector:
 
     def initialize_data_loader(self):
         logger.info("Initializing data loader")
-        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=False,
+        self.data_loader = DataLoader(self.det_datasets, batch_size=self.batch_size, shuffle=self.shuffle,
                                       num_workers=self.num_workers)
 
     def generate_dbinfo(self):
@@ -89,10 +106,14 @@ class PollenDetector:
             main_folders = sorted((entry.name for entry in crops_dir if entry.is_dir()))
         main_folders = sorted(main_folders)
         for main_folder in main_folders:
-            with os.scandir(os.path.join(self.crops_dir_path, main_folder)) as main_fd:
-                sub_folders = sorted((entry.name for entry in main_fd if entry.is_dir()))
-                for sub_folder in sub_folders:
-                    dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
+            # TODO: This can be removed later.
+            # with os.scandir(os.path.join(self.crops_dir_path, main_folder)) as main_fd:
+            #     sub_folders = sorted((entry.name for entry in main_fd if entry.is_dir()))
+
+            # Sort sub folders in natural order
+            sub_folders = os_sorted(glob(os.path.join(self.crops_dir_path, main_folder, '*')))
+            for sub_folder in sub_folders:
+                dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
 
         self.dbinfo = {"cropped_images_list": dir_list}
 
@@ -160,58 +181,84 @@ class PollenDetector:
         return iou
 
     @staticmethod
-    def nms(boxes, conf_threshold=0.1, iou_threshold=0.5):
-        bbox_list_threshold_applied = []
-        bbox_list_new = []
-        bbox_list_new_txt = []
+    def nms(detections_dict, conf_threshold=0.1, iou_threshold=0.5):
 
-        # Stage 1: sort boxes, filter out boxes with low confidence
-        boxes_sorted = sorted(boxes, reverse=True, key=lambda x: x[1])
-        for box in boxes_sorted:
-            if box[1] > conf_threshold:
-                bbox_list_threshold_applied.append(box)
-            else:
-                pass
-        # Stage 2: loop through the boxes, remove boxes with high IoU
-        while len(bbox_list_threshold_applied) > 0:
-            current_box = bbox_list_threshold_applied.pop(0)
-            bbox_list_new.append(current_box)
-            current_box_txt = (
-                current_box[0], str(current_box[1]), str(current_box[2]), str(current_box[3]), str(current_box[4]),
-                str(current_box[5]))
-            current_box_txt = ' '.join(current_box_txt)
-            bbox_list_new_txt.append(current_box_txt)
+        detections_dict_new = dict()
+        detections_dict_new_text = dict()
 
-            for box in bbox_list_threshold_applied:
-                if current_box[0] == box[0]:
-                    iou = PollenDetector.iou(current_box[2:], box[2:])
-                    if iou > iou_threshold:
-                        bbox_list_threshold_applied.remove(box)
+        for key in detections_dict:
+            bbox_list_threshold_applied = []
+            bbox_list_new = []
+            bbox_list_new_txt = []
+            boxes = detections_dict[key]
 
-        return bbox_list_new, bbox_list_new_txt
+            # Stage 1: sort boxes, filter out boxes with low confidence
+            boxes_sorted = sorted(boxes, reverse=True, key=lambda x: x[1])
+            for box in boxes_sorted:
+                if box[1] > conf_threshold:
+                    bbox_list_threshold_applied.append(box)
+            # Stage 2: loop through the boxes, remove boxes with high IoU
+            while len(bbox_list_threshold_applied) > 0:
+                current_box = bbox_list_threshold_applied.pop(0)
+                bbox_list_new.append(current_box)
+                current_box_txt = (
+                    current_box[0], str(current_box[1]), str(current_box[2]), str(current_box[3]), str(current_box[4]),
+                    str(current_box[5]), str(current_box[6]), str(current_box[7]))
+                current_box_txt = ' '.join(current_box_txt)
+                bbox_list_new_txt.append(current_box_txt)
+
+                for box in bbox_list_threshold_applied:
+                    if current_box[0] == box[0]:
+                        iou = PollenDetector.iou(current_box[8:12], box[8:12])
+                        if iou > iou_threshold:
+                            bbox_list_threshold_applied.remove(box)
+
+            detections_dict_new[key] = bbox_list_new
+            detections_dict_new_text[key] = bbox_list_new_txt
+
+        return detections_dict_new, detections_dict_new_text
 
     def process_parallel(self):
         logger.info("Running in parallel mode")
         self.model.share_memory()
-        worker_loaders = torch.utils.data.random_split(self.det_datasets, [
-            1 / self.num_processes] * self.num_processes)
+
+        # Set up the multiprocessing manager to store the list of detections
+        manager = mp.Manager()
+        self.detections_list = manager.list()
+
+        # if shuffle is False, split the dataset into num_processes sequential parts
+        if not self.shuffle:
+            worker_loaders = []
+            for process_index in range(self.num_processes):
+                worker_loader = torch.utils.data.Subset(self.det_datasets,
+                                                        range(process_index, len(self.det_datasets),
+                                                              self.num_processes))
+                worker_loaders.append(worker_loader)
+        # If shuffle is True, split the dataset into num_processes random parts
+        else:
+            worker_loaders = torch.utils.data.random_split(self.det_datasets, [
+                1 / self.num_processes] * self.num_processes)
+
         processes = []
         for worker_id in range(self.num_processes):
             logger.info("Starting process: " + str(worker_id))
-            p = mp.Process(target=PollenDetector.process_crop_images,
+            p = mp.Process(target=PollenDetector.find_potential_pollen_detections,
                            args=(self, DataLoader(worker_loaders[worker_id], batch_size=self.batch_size,
                                                   worker_init_fn=worker_init_fn(worker_id),
-                                                  num_workers=self.num_workers)))
+                                                  num_workers=self.num_workers, shuffle=self.shuffle), worker_id))
             p.start()
             processes.append(p)
         for p in processes:
             p.join()
 
-    def process_crop_images(self, data_loader=None):
+    def find_potential_pollen_detections(self, data_loader=None, process_id=None):
         logger.info("Processing crop images")
 
         if not os.path.exists(self.detections_dir_path):
-            os.makedirs(self.detections_dir_path)
+            try:
+                os.makedirs(self.detections_dir_path)
+            except OSError:
+                logger.error("Creation of the directory %s failed" % self.detections_dir_path)
 
         if data_loader is None:
             data_loader = self.data_loader
@@ -219,6 +266,7 @@ class PollenDetector:
         iter_count, sample_count = 0, 0
 
         with torch.no_grad():
+            # Iterate through batches
             for sample in data_loader:
                 start_time = datetime.now()
                 iter_count += 1
@@ -227,7 +275,11 @@ class PollenDetector:
                     logger.info('{}/{}'.format(iter_count, len(self.det_datasets)))
 
                 cur_img, current_example = sample
-                logger.info("Started processing crop images: " + str(current_example))
+                if process_id is not None:
+                    logger.info(
+                        "Process ID: " + str(process_id) + " Started processing crop images: " + str(current_example))
+                else:
+                    logger.info("Started processing crop images: " + str(current_example))
                 cur_img = cur_img.to(self.device)
 
                 outputs = self.model(cur_img)
@@ -236,6 +288,7 @@ class PollenDetector:
                 pred_dist_transform_output = pred_dist_transform_output.squeeze().cpu().detach().numpy()
                 softmax_output = pred_seg.squeeze().cpu().detach().numpy()
 
+                # Iterate within a batch
                 for index in range(cur_img.shape[0]):
                     if softmax_output.ndim == 3:
                         softmax = softmax_output[index]
@@ -253,19 +306,8 @@ class PollenDetector:
                     coord_peaks = feature.peak_local_max(voting4center, min_distance=25,
                                                          exclude_border=False)  # originally min_distance =5, changed to 25
 
-                    # list filenames for images in the stack
-                    slice_paths = []
-                    current_image_path = os.path.join(self.crops_dir_path, current_example[0][index],
-                                                      current_example[1][index])
-                    for file in sorted(os.listdir(str(current_image_path))):
-                        if file.endswith('.png'):
-                            slice_path = os.path.join(str(current_image_path), file)
-                            slice_paths.append(slice_path)
-
                     # create detection mask using peaks and predicted radius
                     pred_radius_list = []
-                    detection_info2 = []
-
                     size = (400, 400)
 
                     for i in range(coord_peaks.shape[0]):
@@ -308,102 +350,147 @@ class PollenDetector:
                             bottom_bb = y + radius
                             bottom_bb = max(bottom_bb, 0)
 
+                            # Calculate global coordinates
+                            coord_split_list = current_example[1][index].split('_')
+                            tile_image_coordinate_x = int(coord_split_list[0].split('x')[0])
+                            tile_image_coordinate_y = int(coord_split_list[1].split('y')[0])
+                            left_bb_global = left_bb + tile_image_coordinate_x
+                            top_bb_global = top_bb + tile_image_coordinate_y
+                            right_bb_global = right_bb + tile_image_coordinate_x
+                            bottom_bb_global = bottom_bb + tile_image_coordinate_y
+
                             masked_softmax = np.ma.masked_where(tmp_mask == 0, softmax)
                             confidence = np.nanmean(masked_softmax)
-                            bbox_info2 = [class_name, confidence, left_bb, top_bb, right_bb, bottom_bb]
+                            bbox_info2 = [class_name, confidence, left_bb, top_bb, right_bb, bottom_bb,
+                                          current_example[0][index], current_example[1][index], left_bb_global,
+                                          top_bb_global, right_bb_global, bottom_bb_global]
 
-                            detection_info2.append(bbox_info2)
+                            self.detections_list.append(bbox_info2)
 
-                    # Apply non-max suppression
-                    nms_bb = PollenDetector.nms(detection_info2, conf_threshold=self.conf_thresh, iou_threshold=0.3)
-                    nms_bb = nms_bb[0]
-
-                    # create detection mask and center mask using the information on each detection in [NMS_bb]
-                    det_mask = voting4center * 0
-
-                    for i in range(len(nms_bb)):
-                        logger.info(
-                            "Pollen detected: " + current_example[0][index] + " " + current_example[1][index])
-                        confidence = float(nms_bb[i][1])
-                        left_bb = int(nms_bb[i][2])
-                        top_bb = int(nms_bb[i][3])
-                        right_bb = int(nms_bb[i][4])
-                        bottom_bb = int(nms_bb[i][5])
-                        diameter = max(right_bb - left_bb, bottom_bb - top_bb)
-                        radius = diameter / 2
-                        x = left_bb + radius
-                        y = top_bb + radius
-                        det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
-                        # crop detection mask
-                        crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
-
-                        # crop image and stack slices together
-                        slices = []
-
-                        for idx in range(len(slice_paths)):
-                            img_slice = Image.open(slice_paths[idx])
-                            img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
-                            slices.append(img_slice)
-
-                        img_path = self.detections_dir_path
-                        metadata: dict = dict()
-                        metadata["sample_filename"] = current_example[0][index]
-                        metadata["crop_image_coordinates"] = current_example[1][index]
-                        metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
-                            right_bb) + "," + str(bottom_bb) + "))"
-                        metadata["confidence"] = confidence
-                        metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime(
-                            "%Y-%m-%dT%H:%M:%S.%f")[
-                                                             :-3] + 'Z'
-
-                        k = 1
-                        img_path_2 = os.path.join(str(img_path),
-                                                  current_example[0][index] + '_' + current_example[1][
-                                                      index] + '_' + str(
-                                                      k))
-                        while os.path.exists(img_path_2):
-                            img_path_2 = os.path.join(str(img_path),
-                                                      current_example[0][index] + '_' + current_example[1][
-                                                          index] + '_' + str(k))
-                            k += 1
-
-                        for m in range(len(slices)):
-                            if not os.path.exists(img_path_2):
-                                os.makedirs(img_path_2)
-                            img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
-
-                            if isinstance(slices[m], np.ndarray):
-                                img_slice = Image.fromarray(slices[m])
-                                img_slice.save(img_filename)
-
-                        # save cropped mask
-                        mask_path = img_path_2
-
-                        k = 1
-                        mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-                        while os.path.exists(mask_filename):
-                            mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
-                            k += 1
-
-                        if isinstance(crop_mask, np.ndarray):
-                            crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
-                        crop_mask.save(mask_filename)
-
-                        # save metadata
-                        metadata_path = img_path_2
-
-                        k = 1
-                        metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-                        while os.path.exists(metadata_filename):
-                            metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
-                            k += 1
-
-                        with open(metadata_filename, "w") as metadata_json_file:
-                            json.dump(metadata, metadata_json_file, indent=2)
-
-                logger.info("Completed processing crop images: " + str(current_example))
+                if process_id is not None:
+                    logger.info(
+                        "Process ID: " + str(process_id) + " Completed finding potential pollen detections on : " + str(
+                            current_example))
+                else:
+                    logger.info("Completed finding potential pollen detections on : " + str(current_example))
                 duration = datetime.now() - start_time
                 logger.info("Duration: " + str(duration))
+
+    def process_pollen_detections(self):
+
+        logger.info("Starting final processing of pollen detections.")
+
+        # Generate a dictionary of detections based on the image filename
+        detections_list = list(self.detections_list)
+        for detection in detections_list:
+            if detection[6] not in self.detections_dict:
+                self.detections_dict[detection[6]] = []
+            self.detections_dict[detection[6]].append(detection)
+
+        # Apply non-max suppression
+        self.filtered_detections_dict, _ = PollenDetector.nms(self.detections_dict, conf_threshold=self.conf_thresh,
+                                                              iou_threshold=0.3)
+
+        # create detection mask and center mask using the information on each detection in filtered_detections_list
+        det_mask = np.zeros((self.tensor_size[0], self.tensor_size[1]), dtype=np.float32)
+
+        for key in self.filtered_detections_dict:
+
+            for i in range(len(self.filtered_detections_dict[key])):
+
+                ndpi_filename = self.filtered_detections_dict[key][i][6]
+                tile_image_coordinates = self.filtered_detections_dict[key][i][7]
+                coord_split_list = tile_image_coordinates.split('_')
+                tile_image_coordinates_x = int(coord_split_list[0].split('x')[0])
+                tile_image_coordinates_y = int(coord_split_list[1].split('y')[0])
+
+                logger.info(
+                    "Pollen detected: " + ndpi_filename + " " + tile_image_coordinates)
+
+                # list filenames for images in the stack
+                slice_paths = []
+                current_image_path = os.path.join(self.crops_dir_path, ndpi_filename, tile_image_coordinates)
+                for file in sorted(os.listdir(str(current_image_path))):
+                    if file.endswith('.png'):
+                        slice_path = os.path.join(str(current_image_path), file)
+                        slice_paths.append(slice_path)
+
+                confidence = float(self.filtered_detections_dict[key][i][1])
+                left_bb = int(self.filtered_detections_dict[key][i][2])
+                top_bb = int(self.filtered_detections_dict[key][i][3])
+                right_bb = int(self.filtered_detections_dict[key][i][4])
+                bottom_bb = int(self.filtered_detections_dict[key][i][5])
+                diameter = max(right_bb - left_bb, bottom_bb - top_bb)
+                radius = diameter / 2
+                x = left_bb + radius
+                y = top_bb + radius
+                det_mask = PollenDetector.create_circular_mask(det_mask, [y, x], radius, value=i + 1)
+                # crop detection mask
+                crop_mask = det_mask[top_bb:bottom_bb, left_bb:right_bb]
+
+                # crop image and stack slices together
+                slices = []
+
+                for idx in range(len(slice_paths)):
+                    img_slice = Image.open(slice_paths[idx])
+                    img_slice = np.array(img_slice)[top_bb:bottom_bb, left_bb:right_bb]
+                    slices.append(img_slice)
+
+                img_path = self.detections_dir_path
+                metadata: dict = dict()
+                metadata["sample_filename"] = ndpi_filename
+                metadata["tile_image_coordinates"] = tile_image_coordinates
+                metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
+                    right_bb) + "," + str(bottom_bb) + "))"
+                metadata["pollen_image_global_coordinates"] = "((" + str(
+                    tile_image_coordinates_x + left_bb) + "," + str(tile_image_coordinates_y + top_bb) + "), (" + str(
+                    tile_image_coordinates_x + right_bb) + "," + str(tile_image_coordinates_y + bottom_bb) + "))"
+                metadata["confidence"] = confidence
+                metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                                                     :-3] + 'Z'
+
+                k = 1
+                img_path_2 = os.path.join(str(img_path), ndpi_filename + '_' + tile_image_coordinates + '_' + str(k))
+                while os.path.exists(img_path_2):
+                    img_path_2 = os.path.join(str(img_path),
+                                              ndpi_filename + '_' + tile_image_coordinates + '_' + str(k))
+                    k += 1
+
+                for m in range(len(slices)):
+                    if not os.path.exists(img_path_2):
+                        os.makedirs(img_path_2)
+                    img_filename = "{}/{}".format(img_path_2, str(m) + 'z.png')
+
+                    if isinstance(slices[m], np.ndarray):
+                        img_slice = Image.fromarray(slices[m])
+                        img_slice.save(img_filename)
+
+                # save cropped mask
+                mask_path = img_path_2
+
+                k = 1
+                mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
+                while os.path.exists(mask_filename):
+                    mask_filename = "{}/{}_{}{}".format(mask_path, "mask", k, '.png')
+                    k += 1
+
+                if isinstance(crop_mask, np.ndarray):
+                    crop_mask = Image.fromarray((crop_mask * 255).astype(np.uint8))
+                crop_mask.save(mask_filename)
+
+                # save metadata
+                metadata_path = img_path_2
+
+                k = 1
+                metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
+                while os.path.exists(metadata_filename):
+                    metadata_filename = "{}/{}_{}{}".format(metadata_path, "metadata", k, '.json')
+                    k += 1
+
+                with open(metadata_filename, "w") as metadata_json_file:
+                    json.dump(metadata, metadata_json_file, indent=2)
+
+        logger.info("Completed final processing of pollen detections.")
 
 
 def worker_init_fn(worker_id):
