@@ -400,6 +400,9 @@ class PollenDetector:
 
                 ndpi_filename = self.filtered_detections_dict[key][i][6]
                 tile_image_coordinates = self.filtered_detections_dict[key][i][7]
+                coord_split_list = tile_image_coordinates.split('_')
+                tile_image_coordinates_x = int(coord_split_list[0].split('x')[0])
+                tile_image_coordinates_y = int(coord_split_list[1].split('y')[0])
 
                 logger.info(
                     "Pollen detected: " + ndpi_filename + " " + tile_image_coordinates)
@@ -439,6 +442,9 @@ class PollenDetector:
                 metadata["tile_image_coordinates"] = tile_image_coordinates
                 metadata["pollen_image_coordinates"] = "((" + str(left_bb) + "," + str(top_bb) + "), (" + str(
                     right_bb) + "," + str(bottom_bb) + "))"
+                metadata["pollen_image_global_coordinates"] = "((" + str(
+                    tile_image_coordinates_x + left_bb) + "," + str(tile_image_coordinates_y + top_bb) + "), (" + str(
+                    tile_image_coordinates_x + right_bb) + "," + str(tile_image_coordinates_y + bottom_bb) + "))"
                 metadata["confidence"] = confidence
                 metadata["processed_datetime_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
                                                      :-3] + 'Z'
