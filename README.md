@@ -2,13 +2,43 @@
 
 This command-line software to detect pollen grains from images is developed based on pollen
 detection [program](https://github.com/fengzard/ENSO_pollen_analysis/blob/main/03_Classification/03_00_Exporting_crops_for_Class.ipynb)
-authored by [@fengzard](https://github.com/fengzard).
+authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
-# Local Installation Instructions
+## Docker Installation Instructions (Recommended)
+
+### Build Docker Image
+
+```shell
+docker build -t pollen-detection .
+```
+
+### Run Command Line Interface
+
+```shell
+docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
+```
+
+#### Parallel mode
+
+```shell
+docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
+```
+
+Here, the `--shm-size=<memory_size_allocated>` option is used to increase the shared memory size for the Docker.
+The default value is 64MB, which may not be enough for the parallel processing. The value should be set according to the
+memory available on the host machine container.
+
+Help command:
+
+```shell
+docker run -it --rm pollen-detection --help
+```
+
+## Local Installation Instructions (Alternative)
 
 Recommended Python version: 3.9
 
-## Setup Virtual Environment
+### Setup Virtual Environment
 
 ```shell
 python3 -m venv venv
@@ -17,14 +47,14 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## Run Command Line Interface
+### Run Command Line Interface
 
 ```shell
 cd src
 python pollen_detection_cli.py -m <model full path> -c <tile crops directory full path> -d <output detections directory>
 ```
 
-## Usage
+### Usage
 
 ```shell
 usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] [--num-processes [NUM_PROCESSES]]
@@ -51,27 +81,3 @@ optional arguments:
   --cpu                 Run the detection on CPU only.
   --verbose, -v         Display more details.
 ```
-
-## Docker Installation Instructions
-
-### Build Docker Image
-
-```shell
-docker build -t pollen-detection .
-```
-
-### Run Command Line Interface
-
-```shell
-docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
-```
-
-## Parallel mode
-
-```shell
-docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
-```
-
-Here, the `--shm-size=<memory_size_allocated>` option is used to increase the shared memory size for the Docker.
-The default value is 64MB, which may not be enough for the parallel processing. The value should be set according to the
-memory available on the host machine container.
