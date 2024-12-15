@@ -1,5 +1,7 @@
 # Pollen Detection Command Line Interface
 
+[![Docker](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml)
+
 This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen
 Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection)
 authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
