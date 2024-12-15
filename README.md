@@ -17,13 +17,13 @@ docker build -t pollen-detection .
 #### Example serial mode command
 
 ```shell
-docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
+docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/models/model_1.h5 -c /data/crops -d /data/detections
 ```
 
 #### Example parallel mode command
 
 ```shell
-docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p -n 4 -b 4
+docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/models/model_1.h5 -c /data/crops -d /data/detections -p -n 4 -b 4
 ```
 
 **Important:** Here, we use the `--shm-size=<memory_size_allocated>` option to increase the shared memory size for the
