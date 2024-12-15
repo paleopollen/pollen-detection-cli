@@ -14,19 +14,14 @@
 #  limitations under the License.
 
 from __future__ import absolute_import, division, print_function
+
+from collections import OrderedDict
+
 import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
 import torch
 import torch.nn as nn
-from collections import OrderedDict
-from utils.layers import *
 import torchvision.models as models
-import torch.utils.model_zoo as model_zoo
-import numpy as np
-import os, math
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
+from utils.layers import *
 
 
 class ResnetEncoder(nn.Module):
