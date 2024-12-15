@@ -1,7 +1,9 @@
 # Pollen Detection Command Line Interface
 
-This command-line software to detect pollen grains from images is developed based on pollen
-detection [program](https://github.com/fengzard/ENSO_pollen_analysis/blob/main/03_Classification/03_00_Exporting_crops_for_Class.ipynb)
+[![Docker](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml)
+
+This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen
+Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection)
 authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
 ## Docker Installation Instructions (Recommended)
@@ -14,19 +16,21 @@ docker build -t pollen-detection .
 
 ### Run Command Line Interface
 
-```shell
-docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
-```
-
-#### Parallel mode
+#### Example serial mode command
 
 ```shell
-docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
+docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/models/model_1.h5 -c /data/crops -d /data/detections
 ```
 
-Here, the `--shm-size=<memory_size_allocated>` option is used to increase the shared memory size for the Docker.
-The default value is 64MB, which may not be enough for the parallel processing. The value should be set according to the
-memory available on the host machine container.
+#### Example parallel mode command
+
+```shell
+docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/models/model_1.h5 -c /data/crops -d /data/detections -p -n 4 -b 4
+```
+
+**Important:** Here, we use the `--shm-size=<memory_size_allocated>` option to increase the shared memory size for the
+Docker Engine. The default value is 64MB, which may be too little for parallel processing. Set this value according to
+the memory available on the host machine container.
 
 Help command:
 
@@ -49,16 +53,27 @@ pip install -r requirements.txt
 
 ### Run Command Line Interface
 
+#### Example serial mode command
+
 ```shell
 cd src
-python pollen_detection_cli.py -m <model full path> -c <tile crops directory full path> -d <output detections directory>
+python pollen_detection_cli.py -m <model file full path> -c <tile crops directory full path> -d <output detections directory full path prefix>
+```
+
+#### Example parallel mode command
+
+```shell
+cd src
+python pollen_detection_cli.py -m <model file full path> -c <tile crops directory full path> -d <output detections directory full path prefix> -p -n 4 -b 4
 ```
 
 ### Usage
 
 ```shell
-usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] [--num-processes [NUM_PROCESSES]]
-                               [--num-workers [NUM_WORKERS]] [--batch-size [BATCH_SIZE]] [--shuffle] [--cpu] [--verbose]
+usage: python pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] 
+                               [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] 
+                               [--num-processes [NUM_PROCESSES]] [--num-workers [NUM_WORKERS]]
+                               [--batch-size [BATCH_SIZE]] [--shuffle] [--cpu] [--verbose]
 
 Process PNG image stacks and detect pollen grains.
 

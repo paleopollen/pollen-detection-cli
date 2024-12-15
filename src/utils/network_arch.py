@@ -14,19 +14,14 @@
 #  limitations under the License.
 
 from __future__ import absolute_import, division, print_function
+
+from collections import OrderedDict
+
 import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
 import torch
 import torch.nn as nn
-from collections import OrderedDict
-from utils.layers import *
 import torchvision.models as models
-import torch.utils.model_zoo as model_zoo
-import numpy as np
-import os, math
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
+from utils.layers import *
 
 
 class ResnetEncoder(nn.Module):
@@ -35,13 +30,12 @@ class ResnetEncoder(nn.Module):
 
     def __init__(self, num_layers, pretrained):
         super(ResnetEncoder, self).__init__()
+        self.features = None
         self.path_to_model = './model'
         self.num_ch_enc = np.array([64, 64, 128, 256, 512])
 
         resnets = {18: models.resnet18, 34: models.resnet34, 50: models.resnet50,
                    101: models.resnet101, 152: models.resnet152}
-        # resnets_pretrained_path = {18: 'resnet18-5c106cde.pth',
-        # 34: 'resnet34-333f7ec4.pth', 50: 'resnet50.pth', 101: 'resnet101.pth', 152: 'resnet152.pth'}
 
         if num_layers not in resnets:
             raise ValueError("{} is not a valid number of resnet layers".format(
@@ -51,14 +45,9 @@ class ResnetEncoder(nn.Module):
 
         if pretrained:
             print("using pretrained model")
-            # self.encoder.load_state_dict(
-            # torch.load(os.path.join(self.path_to_model, resnets_pretrained_path[num_layers])))
             checkpoint = torch.load(self.path_to_model)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            epoch = checkpoint['epoch']
-            loss = checkpoint['loss']
-            scheduler = checkpoint['lr_sched']
 
         if num_layers > 34:
             self.num_ch_enc[1:] *= 4
@@ -83,6 +72,7 @@ class Decoder(nn.Module):
                  num_output_channels=1, use_skips=True):
         super(Decoder, self).__init__()
 
+        self.outputs = None
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips
         self.upsample_mode = 'nearest'
