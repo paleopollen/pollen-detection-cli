@@ -13,33 +13,21 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import os, random, time, copy
-from skimage import io, transform
-import numpy as np
 import os.path as path
-import scipy.io as sio
-from scipy import misc
-import matplotlib.pyplot as plt
-import PIL.Image
 import pickle
 
-import skimage.transform
-
+import PIL.Image
+import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
 import torch.nn.functional as F
-from torch.autograd import Variable
-
-import torchvision
-from torchvision import datasets, models, transforms
+from skimage import transform
+from torch.utils.data import Dataset
+from torchvision import transforms
 
 
 class PollenDet4Eval(Dataset):
-    def __init__(self, path_to_image='/home/skong2/restore/dataset/pollenProject_dataset_part1',
-                 path_to_annot='/home/skong2/restore/dataset/pollenProject_dataset_annotationCombo',
+    def __init__(self, path_to_image='',
+                 path_to_annot='',
                  dbinfo=None,
                  size=[512, 512],
                  set_name='train'):
@@ -185,8 +173,8 @@ class PollenDet4Eval(Dataset):
 
 
 class PollenDet(Dataset):
-    def __init__(self, path_to_image='/home/skong2/restore/dataset/pollenProject_dataset_part1',
-                 path_to_annot='/home/skong2/restore/dataset/pollenProject_dataset_annotationCombo',
+    def __init__(self, path_to_image='',
+                 path_to_annot='',
                  dbinfo=None,
                  size=[512, 512],
                  set_name='train'):
