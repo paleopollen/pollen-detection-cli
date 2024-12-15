@@ -1,6 +1,7 @@
 # Pollen Detection Command Line Interface
 
-This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection) 
+This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen
+Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection)
 authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
 ## Docker Installation Instructions (Recommended)
@@ -23,9 +24,9 @@ docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container polle
 docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
 ```
 
-Here, the `--shm-size=<memory_size_allocated>` option is used to increase the shared memory size for the Docker.
-The default value is 64MB, which may not be enough for the parallel processing. The value should be set according to the
-memory available on the host machine container.
+**Important:** Here, we use the `--shm-size=<memory_size_allocated>` option to increase the shared memory size for the
+Docker Engine. The default value is 64MB, which may be too little for parallel processing. Set this value according to
+the memory available on the host machine container.
 
 Help command:
 
@@ -56,8 +57,10 @@ python pollen_detection_cli.py -m <model full path> -c <tile crops directory ful
 ### Usage
 
 ```shell
-usage: pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] [--num-processes [NUM_PROCESSES]]
-                               [--num-workers [NUM_WORKERS]] [--batch-size [BATCH_SIZE]] [--shuffle] [--cpu] [--verbose]
+usage: python pollen_detection_cli.py [-h] --model-path [MODEL_FILE_PATH] --crops-dir [CROPS_DIR_PATH] 
+                               [--detections-dir-prefix [DETECTIONS_DIR_PATH_PREFIX]] [--parallel] 
+                               [--num-processes [NUM_PROCESSES]] [--num-workers [NUM_WORKERS]]
+                               [--batch-size [BATCH_SIZE]] [--shuffle] [--cpu] [--verbose]
 
 Process PNG image stacks and detect pollen grains.
 
