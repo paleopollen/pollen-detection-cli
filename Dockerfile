@@ -2,14 +2,21 @@ FROM python:3.9-slim
 
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y \
-&& mkdir -p /data \
-&& rm -rf /var/lib/apt/lists/*
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+# Create data directory
+RUN mkdir -p /data
 
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
+# Copy the application source code
 COPY src/ /usr/src/app/
 
-ENTRYPOINT [ "python3", "pollen_detection_cli.py"]
+# Set the entrypoint
+ENTRYPOINT ["python3", "pollen_detection_cli.py"]
