@@ -14,14 +14,16 @@ docker build -t pollen-detection .
 
 ### Run Command Line Interface
 
+#### Example serial mode command
+
 ```shell
 docker run -it --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections
 ```
 
-#### Parallel mode
+#### Example parallel mode command
 
 ```shell
-docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p
+docker run -it --shm-size=<memory_size_allocated> --rm -v $(pwd)/data:/data --name pollen-detection-container pollen-detection -m /data/model.h5 -c /data/crops -d /data/detections -p -n 4 -b 4
 ```
 
 **Important:** Here, we use the `--shm-size=<memory_size_allocated>` option to increase the shared memory size for the
@@ -49,9 +51,18 @@ pip install -r requirements.txt
 
 ### Run Command Line Interface
 
+#### Example serial mode command
+
 ```shell
 cd src
-python pollen_detection_cli.py -m <model full path> -c <tile crops directory full path> -d <output detections directory>
+python pollen_detection_cli.py -m <model file full path> -c <tile crops directory full path> -d <output detections directory full path prefix>
+```
+
+#### Example parallel mode command
+
+```shell
+cd src
+python pollen_detection_cli.py -m <model file full path> -c <tile crops directory full path> -d <output detections directory full path prefix> -p -n 4 -b 4
 ```
 
 ### Usage
