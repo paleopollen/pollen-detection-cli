@@ -1,7 +1,6 @@
 # Pollen Detection Command Line Interface
 
-This command-line software to detect pollen grains from images is developed based on pollen
-detection [program](https://github.com/fengzard/open_world_pollen_detection) 
+This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection) 
 authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
 
 ## Docker Installation Instructions (Recommended)
