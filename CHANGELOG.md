@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- README to include Zenodo status badge and update description. [#51](https://github.com/paleopollen/palyim-issues/issues/61)
+
 ## [1.0.0] - 2024-12-15
 
 ### Added
@@ -14,4 +19,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Code cleanup and other improvements. [#61](https://github.com/paleopollen/palyim-issues/issues/61)
 
+[unreleased]: https://github.com/paleopollen/pollen-detection-cli/compare/v1.0.0...HEAD 
 [1.0.0]: https://github.com/paleopollen/pollen-detection-cli/releases/tag/v1.0.0
