@@ -1,10 +1,12 @@
-# Pollen Detection Command Line Interface
+# A Command Line Interface for Pollen Detection on Z-Stack Images
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14497720.svg)](https://doi.org/10.5281/zenodo.14497720)
 [![Docker](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml)
 
-This command-line interface to detect pollen grains from images is developed based on the Deep learning and Pollen
-Detection in the Open World [notebooks](https://github.com/fengzard/open_world_pollen_detection)
-authored by Jennifer T. Feng, Shu Kong, Timme H. Donders, Surangi W. Punyasena.
+We present, `Pollen Detector` a Command Line Interface (CLI) for pollen detection on Z-stack images. It is developed
+based on Deep learning and Pollen Detection in the Open
+World [notebooks](https://github.com/fengzard/open_world_pollen_detection) authored by Jennifer T. Feng, Shu Kong, Timme
+H. Donders, and Surangi W. Punyasena.
 
 ## Docker Installation Instructions (Recommended)
 
