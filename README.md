@@ -1,6 +1,6 @@
 # A Command Line Interface for Pollen Detection on Z-Stack Images
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14497720.svg)](https://doi.org/10.5281/zenodo.14497720)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14497719.svg)](https://doi.org/10.5281/zenodo.14497719)
 [![Docker](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/paleopollen/pollen-detection-cli/actions/workflows/docker-publish.yml)
 
 We present, `Pollen Detector` a Command Line Interface (CLI) for pollen detection on Z-stack images. It is developed
