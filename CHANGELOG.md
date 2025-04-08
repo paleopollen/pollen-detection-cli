@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CITATION.cff file.
+
 ### Changed
 - README to include Zenodo status badge and update description. [#51](https://github.com/paleopollen/palyim-issues/issues/61)
 

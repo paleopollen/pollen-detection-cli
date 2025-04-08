@@ -1,0 +1,44 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  A Command Line Interface for Pollen Detection on Z-Stack
+  Images
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Sandeep
+    family-names: Puthanveetil Satheesan
+    affiliation: University of Illinois Urbana-Champaign
+    orcid: 'https://orcid.org/0000-0001-9075-3740'
+  - given-names: Jennifer
+    family-names: Feng
+    affiliation: University of Pennsylvania
+    orcid: 'https://orcid.org/0000-0002-0069-7886'
+  - given-names: Shu
+    family-names: Kong
+    affiliation: University of Macau
+    orcid: 'https://orcid.org/0000-0002-1362-5937'
+  - given-names: Surangi
+    family-names: Punyasena
+    affiliation: University of Illinois Urbana-Champaign
+    orcid: 'https://orcid.org/0000-0003-2110-5840'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.14497720
+repository-code: 'https://github.com/paleopollen/pollen-detection-cli'
+abstract: >-
+  A Command Line Interface (CLI) for pollen detection on
+  Z-stack images. This softare is developed based on Deep learning and
+  Pollen Detection in the Open World notebooks (https://github.com/fengzard/open_world_pollen_detection) authored by
+  Jennifer T. Feng, Shu Kong, Timme H. Donders, and Surangi
+  W. Punyasena.
+keywords:
+  - Palynology
+  - Pollen Detection
+  - Deep Learning
+  - Microscopy
+license: Apache-2.0
