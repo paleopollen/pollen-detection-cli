@@ -128,7 +128,9 @@ class PollenDetector:
             # Sort sub folders in natural order
             sub_folders = os_sorted(glob(os.path.join(self.crops_dir_path, main_folder, '*')))
             for sub_folder in sub_folders:
-                dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
+                # Only add directories to the list
+                if os.path.isdir(sub_folder):
+                    dir_list.append((os.path.basename(main_folder), os.path.basename(sub_folder)))
 
         self.dbinfo = {"cropped_images_list": dir_list}
 
