@@ -26,9 +26,6 @@ authors:
     family-names: Punyasena
     affiliation: University of Illinois Urbana-Champaign
     orcid: 'https://orcid.org/0000-0003-2110-5840'
-identifiers:
-  - type: doi
-    value: 10.5281/zenodo.14497720
 repository-code: 'https://github.com/paleopollen/pollen-detection-cli'
 abstract: >-
   A Command Line Interface (CLI) for pollen detection on
