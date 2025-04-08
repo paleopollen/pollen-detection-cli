@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-04-08
+
 ### Added
 - CITATION.cff file.
 
@@ -25,5 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Code cleanup and other improvements. [#61](https://github.com/paleopollen/palyim-issues/issues/61)
 
-[unreleased]: https://github.com/paleopollen/pollen-detection-cli/compare/v1.0.0...HEAD 
+[unreleased]: https://github.com/paleopollen/pollen-detection-cli/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/paleopollen/pollen-detection-cli/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/paleopollen/pollen-detection-cli/releases/tag/v1.0.0
