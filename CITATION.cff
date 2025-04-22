@@ -29,7 +29,7 @@ authors:
 repository-code: 'https://github.com/paleopollen/pollen-detection-cli'
 abstract: >-
   A Command Line Interface (CLI) for pollen detection on
-  Z-stack images. This softare is developed based on Deep learning and
+  Z-stack images. This software is developed based on Deep learning and
   Pollen Detection in the Open World notebooks (https://github.com/fengzard/open_world_pollen_detection) authored by
   Jennifer T. Feng, Shu Kong, Timme H. Donders, and Surangi
   W. Punyasena.
