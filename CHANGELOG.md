@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - CITATION.cff file and updated Zenodo URL in README.
 
+### Security
+- Update PyTorch and Torchvision versions. [#6](https://github.com/paleopollen/pollen-detection-cli/security/dependabot/6)
+
 ## [1.1.0] - 2025-04-08
 
 ### Added
